@@ -113,6 +113,7 @@ data VerificationFailure
   | JSONDecodeError String
   | CBORDecodeError String CBOR.DeserialiseFailure
   | MismatchedRPID
+  | MismatchedPublicKey
   | UserNotPresent
   | UserUnverified
   | UnsupportedAttestationFormat
@@ -143,6 +144,54 @@ decodeFIDOU2F = do
   cert <- either fail pure $ X509.decodeSignedCertificate certBS
   return (StmtFIDOU2F cert sig)
 
+data StmtTPMCert = StmtTPMX5C [X509.SignedExact X509.Certificate]
+  | StmtTPMECDAA ByteString
+
+data StmtTPM = StmtTPM
+  { stmtTPM'alg :: COSEAlgorithmIdentifier
+  , stmtTPM'cert :: StmtTPMCert
+  , stmtTPM'sig :: ByteString
+  , stmtTPM'certInfo :: ByteString
+  , stmtTPM'pubArea :: ByteString
+  }
+
+decodeTPM :: CBOR.Decoder s StmtTPM
+decodeTPM = do
+  m <- CBOR.decode
+  stmtTPM'alg <- case Map.lookup "alg" m of
+    Just (CBOR.TInt i) -> pure $ COSEAlgorithmIdentifier i
+    Nothing -> fail "decodeTPM: alg is missing"
+  stmtTPM'cert <- case Map.lookup "x5c" m of
+    Just (CBOR.TList ts) -> StmtTPMX5C
+      <$> sequence [either fail pure $ X509.decodeSignedCertificate bs | CBOR.TBytes bs <- ts]
+    _ -> fail "decodeTPM: x5c is missing"
+  let fetchB :: Text -> CBOR.Decoder s ByteString
+      fetchB k = case Map.lookup k m of
+        Just (CBOR.TBytes b) -> pure b
+        _ -> fail $ "decodeTPM: " ++ show k ++ " is missing"
+  stmtTPM'sig <- fetchB "sig"
+  stmtTPM'certInfo <- fetchB "certInfo"
+  stmtTPM'pubArea <- fetchB "pubArea"
+  return StmtTPM{..}
+
+newtype COSEAlgorithmIdentifier = COSEAlgorithmIdentifier { getCOSEAlgorithmIdentifier :: Int }
+  deriving (Show, Eq, Ord, CBOR.Serialise)
+
+verifyTPM :: StmtTPM -> AuthenticatorData -> Digest SHA256 -> Either VerificationFailure ()
+verifyTPM StmtTPM{..} AuthenticatorData{..} clientDataHash = case stmtTPM'cert of
+  StmtTPMECDAA _ -> error "verifyTPM: ECDAA is not supported"
+  StmtTPMX5C (aikCert : _) -> do
+    -- TODO: verify certInfo
+    -- XXX and so on
+    let alg = case getCOSEAlgorithmIdentifier stmtTPM'alg of
+          -257 -> X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
+          -7 -> X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC
+    credentialPublicKey attestedCredentialData == stmtTPM'pubArea ?? MismatchedPublicKey
+    case X509.verifySignature alg
+      (X509.certPubKey $ X509.getCertificate aikCert) stmtTPM'certInfo stmtTPM'sig of
+        X509.SignaturePass -> return ()
+        X509.SignatureFailed f -> Left $ SignatureFailure f
+
 assertKey :: Text -> CBOR.Decoder s ()
 assertKey k = do
   k' <- CBOR.decodeString
@@ -166,7 +215,7 @@ parseAuthenticatorData = do
   return AuthenticatorData{..}
 
 data AttestationStatement = AF_Packed
-  | AF_TPM
+  | AF_TPM StmtTPM
   | AF_AndroidKey
   | AF_AndroidSafetyNet
   | AF_FIDO_U2F StmtFIDOU2F
@@ -200,6 +249,7 @@ decodeAttestation = do
   assertKey "attStmt"
   stmt <- case fmt of
     "fido-u2f" -> AF_FIDO_U2F <$> decodeFIDOU2F
+    "tpm" -> AF_TPM <$> decodeTPM
     _ -> error "decodeAttestation: Unsupported format"
   assertKey "authData"
   ad <- CBOR.decodeBytes
