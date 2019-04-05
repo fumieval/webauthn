@@ -1,8 +1,27 @@
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Web.WebAuthn where
+module Web.WebAuthn (
+  -- * Basic
+  TokenBinding(..)
+  , Origin(..)
+  , RelyingParty(..)
+  , defaultRelyingParty
+  -- Challenge
+  , Challenge(..)
+  , generateChallenge
+  , WebAuthnType(..)
+  , AuthenticatorAttestationResponse(..)
+  , Attestation(..)
+  , CollectedClientData(..)
+  , AuthenticatorData(..)
+  , CredentialData(..)
+  -- * verfication
+  , VerificationFailure(..)
+  , registerCredential
+  ) where
 
 import Prelude hiding (fail)
 import Data.Aeson as J
@@ -11,8 +30,10 @@ import Data.ByteString (ByteString)
 import qualified Data.Serialize as C
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Base64 as Base64
+import qualified Data.Hashable as H
 import Data.Int
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -24,11 +45,27 @@ import Crypto.Hash
 import Crypto.Hash.Algorithms (SHA256(..))
 import qualified Data.X509 as X509
 import qualified Data.X509.Validation as X509
+import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail
 import Control.Monad hiding (fail)
+
+import Debug.Trace
+
+generateChallenge :: Int -> IO Challenge
+generateChallenge len = Challenge <$> getRandomBytes len
+
+newtype Challenge = Challenge { rawChallenge :: ByteString }
+  deriving (Show, Eq, Ord, H.Hashable, CBOR.Serialise)
+
+instance ToJSON Challenge where
+  toJSON = toJSON . decodeUtf8 . Base64.encode . rawChallenge
+
+instance FromJSON Challenge where
+  parseJSON = withText "Challenge" $ pure . Challenge
+    . Base64.decodeLenient . encodeUtf8
 
 data CollectedClientData = CollectedClientData
   { clientType :: WebAuthnType
@@ -60,17 +97,10 @@ instance FromJSON WebAuthnType where
     "webauthn.create" -> pure Create
     _ -> fail "unknown type"
 
-newtype Challenge = Challenge { rawChallenge :: ByteString }
-  deriving (Show, Eq, Ord)
-
-instance FromJSON Challenge where
-  parseJSON = withText "Challenge" $ either fail (pure . Challenge)
-    . Base64.decode . encodeUtf8
-
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
     (sch, url) -> case T.break (==':') $ T.drop 3 url of
-      (host, portPath) -> case T.decimal portPath of
+      (host, portPath) -> case T.decimal $ T.drop 1 portPath of
         Left str -> fail str
         Right (port, _) -> pure $ Origin sch host port
 
@@ -81,17 +111,18 @@ data VerificationFailure
   | UnexpectedPresenceOfTokenBinding
   | MismatchedTokenBinding
   | JSONDecodeError String
-  | CBORDecodeError CBOR.DeserialiseFailure
+  | CBORDecodeError String CBOR.DeserialiseFailure
   | MismatchedRPID
   | UserNotPresent
   | UserUnverified
   | UnsupportedAttestationFormat
   | MalformedU2FPublicKey
   | SignatureFailure X509.SignatureFailure
+  deriving Show
 
 data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
-  { clientDataJSON :: ByteString
-  , attestationObject :: ByteString
+  { attestationObject :: ByteString
+  , clientDataJSON :: ByteString
   }
 
 data Attestation = Attestation
@@ -101,20 +132,21 @@ data Attestation = Attestation
 
 data StmtFIDOU2F = StmtFIDOU2F (X509.SignedExact X509.Certificate) ByteString
 
+decodeFIDOU2F :: CBOR.Decoder s StmtFIDOU2F
 decodeFIDOU2F = do
   _ <- CBOR.decodeMapLen
-  assertKey "x5c"
-  _ <- CBOR.decodeListLen
-  assertKey "attestnCert"
-  certBS <- CBOR.decodeBytes
-  cert <- either fail pure $ X509.decodeSignedCertificate certBS
   assertKey "sig"
   sig <- CBOR.decodeBytes
+  assertKey "x5c"
+  _ <- CBOR.decodeListLen
+  certBS <- CBOR.decodeBytes
+  cert <- either fail pure $ X509.decodeSignedCertificate certBS
   return (StmtFIDOU2F cert sig)
 
+assertKey :: Text -> CBOR.Decoder s ()
 assertKey k = do
   k' <- CBOR.decodeString
-  unless (k == k') $ fail $ "assertKey: " ++ show (k, k')
+  unless (k == k') $ fail $ "assertKey: " ++ T.unpack k ++ " /= " ++ T.unpack k'
 
 parseAuthenticatorData :: C.Get AuthenticatorData
 parseAuthenticatorData = do
@@ -143,16 +175,17 @@ data AttestationStatement = AF_Packed
 verifyFIDOU2F :: StmtFIDOU2F -> AuthenticatorData -> Digest SHA256 -> Either VerificationFailure ()
 verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
   let CredentialData{..} = attestedCredentialData
-  m <- either (Left . CBORDecodeError) pure
+  m <- either (Left . CBORDecodeError "verifyFIDOU2F") pure
     $ CBOR.deserialiseOrFail $ BL.fromStrict credentialPublicKey
   pubU2F <- maybe (Left MalformedU2FPublicKey) pure $ do
-      x <- Map.lookup ("-2" :: Text) m
-      y <- Map.lookup "-3" m
-      return $ B.concat [B.singleton 0x04, x, y]
-  let dat = B.concat [B.singleton 0x00
-        , BA.convert rpIdHash
-        , BA.convert clientDataHash
-        , credentialId
+      CBOR.TBytes x <- Map.lookup (-2 :: Int) m
+      CBOR.TBytes y <- Map.lookup (-3) m
+      return $ BB.word8 0x04 <> BB.byteString x <> BB.byteString y
+  let dat = BL.toStrict $ BB.toLazyByteString $ mconcat
+        [ BB.word8 0x00
+        , BB.byteString $ BA.convert rpIdHash
+        , BB.byteString $ BA.convert clientDataHash
+        , BB.byteString credentialId
         , pubU2F]
   case X509.verifySignature (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC)
     (X509.certPubKey $ X509.getCertificate cert) dat sig of
@@ -162,14 +195,15 @@ verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
 decodeAttestation :: CBOR.Decoder s Attestation
 decodeAttestation = do
   _ <- CBOR.decodeMapLen
-  assertKey "authData"
-  ad <- CBOR.decodeBytes
-    >>= either fail pure . C.runGet parseAuthenticatorData
   assertKey "fmt"
   fmt <- CBOR.decodeString
+  assertKey "attStmt"
   stmt <- case fmt of
     "fido-u2f" -> AF_FIDO_U2F <$> decodeFIDOU2F
     _ -> error "decodeAttestation: Unsupported format"
+  assertKey "authData"
+  ad <- CBOR.decodeBytes
+    >>= either fail pure . C.runGet parseAuthenticatorData
   return (Attestation ad stmt)
 
 lookupM :: (Ord k, MonadFail m) => k -> Map.Map k a -> m a
@@ -223,15 +257,14 @@ registerCredential :: Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
   -> Bool -- ^ require user verification?
-  -> TrustAnchors
   -> AuthenticatorAttestationResponse
   -> Either VerificationFailure CredentialData
-registerCredential ch RelyingParty{..} tbi verificationRequired anchors
+registerCredential challenge RelyingParty{..} tbi verificationRequired
   AuthenticatorAttestationResponse{..} = do
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
   clientType == Create ?? InvalidType
-  ch == clientChallenge ?? MismatchedChallenge
+  challenge == clientChallenge ?? MismatchedChallenge
   rpOrigin == clientOrigin ?? MismatchedOrigin
   case clientTokenBinding of
     TokenBindingUnsupported -> pure ()
@@ -242,7 +275,7 @@ registerCredential ch RelyingParty{..} tbi verificationRequired anchors
         | t == t' -> pure ()
         | otherwise -> Left MismatchedTokenBinding
   Attestation{ attestationAuthData = ad, attestationStatement = stmt }
-    <- either (Left . CBORDecodeError) (pure . snd)
+    <- either (Left . CBORDecodeError "registerCredential") (pure . snd)
     $ CBOR.deserialiseFromBytes decodeAttestation
     $ BL.fromStrict $ attestationObject
   let clientDataHash = hash clientDataJSON :: Digest SHA256
