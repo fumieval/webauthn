@@ -20,7 +20,7 @@ module Web.WebAuthn (
   , CredentialData(..)
   -- * verfication
   , VerificationFailure(..)
-  , registerCredential
+  , verify
   ) where
 
 import Prelude hiding (fail)
@@ -127,10 +127,12 @@ data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
 
 data Attestation = Attestation
   { attestationAuthData :: AuthenticatorData
+  , attestationAuthDataRaw :: ByteString
   , attestationStatement :: AttestationStatement
   }
 
 data StmtFIDOU2F = StmtFIDOU2F (X509.SignedExact X509.Certificate) ByteString
+  deriving Show
 
 decodeFIDOU2F :: CBOR.Decoder s StmtFIDOU2F
 decodeFIDOU2F = do
@@ -142,6 +144,29 @@ decodeFIDOU2F = do
   certBS <- CBOR.decodeBytes
   cert <- either fail pure $ X509.decodeSignedCertificate certBS
   return (StmtFIDOU2F cert sig)
+
+data StmtPacked = StmtPacked Int ByteString (X509.SignedExact X509.Certificate)
+  deriving Show
+
+decodePacked :: CBOR.Decoder s StmtPacked
+decodePacked = do
+  _ <- CBOR.decodeMapLen
+  assertKey "alg"
+  alg <- CBOR.decode
+  assertKey "sig"
+  sig <- CBOR.decodeBytes
+  assertKey "x5c"
+  _ <- CBOR.decodeListLen
+  certBS <- CBOR.decodeBytes
+  cert <- either fail pure $ X509.decodeSignedCertificate certBS
+  return (StmtPacked alg sig cert)
+
+verifyPacked :: StmtPacked -> B.ByteString -> Digest SHA256 -> Either VerificationFailure ()
+verifyPacked (StmtPacked _ sig cert) ad clientDataHash = do
+  case X509.verifySignature (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC)
+    (X509.certPubKey $ X509.getCertificate cert) (ad <> BA.convert clientDataHash) sig of
+      X509.SignaturePass -> return ()
+      X509.SignatureFailed f -> Left $ SignatureFailure f
 
 assertKey :: Text -> CBOR.Decoder s ()
 assertKey k = do
@@ -165,12 +190,13 @@ parseAuthenticatorData = do
   let attestedCredentialData = CredentialData{..}
   return AuthenticatorData{..}
 
-data AttestationStatement = AF_Packed
+data AttestationStatement = AF_Packed StmtPacked
   | AF_TPM
   | AF_AndroidKey
   | AF_AndroidSafetyNet
   | AF_FIDO_U2F StmtFIDOU2F
   | AF_None
+  deriving Show
 
 verifyFIDOU2F :: StmtFIDOU2F -> AuthenticatorData -> Digest SHA256 -> Either VerificationFailure ()
 verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
@@ -200,11 +226,12 @@ decodeAttestation = do
   assertKey "attStmt"
   stmt <- case fmt of
     "fido-u2f" -> AF_FIDO_U2F <$> decodeFIDOU2F
-    _ -> error "decodeAttestation: Unsupported format"
+    "packed" -> AF_Packed <$> decodePacked
+    stmt -> error $ "decodeAttestation: Unsupported format: " ++ show fmt
   assertKey "authData"
-  ad <- CBOR.decodeBytes
-    >>= either fail pure . C.runGet parseAuthenticatorData
-  return (Attestation ad stmt)
+  adRaw <- CBOR.decodeBytes
+  ad <- either fail pure $ C.runGet parseAuthenticatorData adRaw
+  return (Attestation ad adRaw stmt)
 
 lookupM :: (Ord k, MonadFail m) => k -> Map.Map k a -> m a
 lookupM k = maybe (fail "not found") pure . Map.lookup k
@@ -221,7 +248,7 @@ data CredentialData = CredentialData
   { aaguid :: ByteString
   , credentialId :: ByteString
   , credentialPublicKey :: ByteString
-  }
+  } deriving (Show, Eq)
 
 data Origin = Origin
   { originScheme :: Text
@@ -253,17 +280,18 @@ False ?? e = Left e
 True ?? _ = Right ()
 infix 1 ??
 
-registerCredential :: Challenge
+verify :: WebAuthnType
+  -> Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
   -> Bool -- ^ require user verification?
   -> AuthenticatorAttestationResponse
   -> Either VerificationFailure CredentialData
-registerCredential challenge RelyingParty{..} tbi verificationRequired
+verify ty challenge RelyingParty{..} tbi verificationRequired
   AuthenticatorAttestationResponse{..} = do
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
-  clientType == Create ?? InvalidType
+  clientType == ty ?? InvalidType
   challenge == clientChallenge ?? MismatchedChallenge
   rpOrigin == clientOrigin ?? MismatchedOrigin
   case clientTokenBinding of
@@ -274,7 +302,9 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired
       Just t'
         | t == t' -> pure ()
         | otherwise -> Left MismatchedTokenBinding
-  Attestation{ attestationAuthData = ad, attestationStatement = stmt }
+  Attestation{ attestationAuthData = ad
+    , attestationAuthDataRaw = adRaw
+    , attestationStatement = stmt }
     <- either (Left . CBORDecodeError "registerCredential") (pure . snd)
     $ CBOR.deserialiseFromBytes decodeAttestation
     $ BL.fromStrict $ attestationObject
@@ -287,5 +317,6 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired
 
   case stmt of
     AF_FIDO_U2F s -> verifyFIDOU2F s ad clientDataHash
-    _ -> error "registerCredential: unsupported format"
+    AF_Packed s -> verifyPacked s adRaw client
+    stmt -> error $ "registerCredential: unsupported format: " ++ show stmt
   return $ attestedCredentialData ad

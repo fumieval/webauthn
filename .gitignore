@@ -2,3 +2,4 @@ dist-newstyle
 .stack-work/
 *~
 .ghc.environment*
+.DS_Store
