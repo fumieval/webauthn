@@ -13,13 +13,14 @@ module Web.WebAuthn (
   , Challenge(..)
   , generateChallenge
   , WebAuthnType(..)
-  , AuthenticatorAttestationResponse(..)
   , Attestation(..)
   , CollectedClientData(..)
   , AuthenticatorData(..)
   , CredentialData(..)
+  , CredentialId(..)
   -- * verfication
   , VerificationFailure(..)
+  , registerCredential
   , verify
   ) where
 
@@ -87,7 +88,7 @@ data TokenBinding = TokenBindingUnsupported
 instance FromJSON TokenBinding where
   parseJSON = withText "TokenBinding" $ \case
     "supported" -> pure TokenBindingSupported -- FIXME
-    _ -> fail "unknown type"
+    _ -> fail "unknown TokenBinding"
 
 data WebAuthnType = Create | Get
   deriving (Show, Eq, Ord)
@@ -95,7 +96,8 @@ data WebAuthnType = Create | Get
 instance FromJSON WebAuthnType where
   parseJSON = withText "WebAuthnType" $ \case
     "webauthn.create" -> pure Create
-    _ -> fail "unknown type"
+    "webauthn.get" -> pure Get
+    _ -> fail "unknown WebAuthnType"
 
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
@@ -117,13 +119,10 @@ data VerificationFailure
   | UserUnverified
   | UnsupportedAttestationFormat
   | MalformedU2FPublicKey
+  | MalformedAuthenticatorData
+  | MalformedX509Certificate
   | SignatureFailure X509.SignatureFailure
   deriving Show
-
-data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
-  { attestationObject :: ByteString
-  , clientDataJSON :: ByteString
-  }
 
 data Attestation = Attestation
   { attestationAuthData :: AuthenticatorData
@@ -161,12 +160,14 @@ decodePacked = do
   cert <- either fail pure $ X509.decodeSignedCertificate certBS
   return (StmtPacked alg sig cert)
 
-verifyPacked :: StmtPacked -> B.ByteString -> Digest SHA256 -> Either VerificationFailure ()
+verifyPacked :: StmtPacked -> B.ByteString
+  -> Digest SHA256
+  -> Either VerificationFailure ()
 verifyPacked (StmtPacked _ sig cert) ad clientDataHash = do
-  case X509.verifySignature (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC)
-    (X509.certPubKey $ X509.getCertificate cert) (ad <> BA.convert clientDataHash) sig of
-      X509.SignaturePass -> return ()
-      X509.SignatureFailed f -> Left $ SignatureFailure f
+  let pub = X509.certPubKey $ X509.getCertificate cert
+  case X509.verifySignature ec256 pub (ad <> BA.convert clientDataHash) sig of
+    X509.SignaturePass -> return ()
+    X509.SignatureFailed f -> Left $ SignatureFailure f
 
 assertKey :: Text -> CBOR.Decoder s ()
 assertKey k = do
@@ -179,15 +180,18 @@ parseAuthenticatorData = do
   rpIdHash <- maybe (fail "impossible") pure $ digestFromByteString rpIdHash'
   flags <- C.getWord8
   counter <- C.getBytes 4
-  aaguid <- C.getBytes 16
-  len <- C.getWord16be
-  credentialId <- C.getBytes (fromIntegral len)
-  n <- C.remaining
-  credentialPublicKey <- C.getBytes n
+  attestedCredentialData <- if testBit flags 6
+    then do
+      aaguid <- C.getBytes 16
+      len <- C.getWord16be
+      credentialId <- CredentialId <$> C.getBytes (fromIntegral len)
+      n <- C.remaining
+      credentialPublicKey <- CredentialPublicKey <$> C.getBytes n
+      pure $ Just CredentialData{..}
+    else pure Nothing
   let authenticatorDataExtension = B.empty --FIXME
   let userPresent = testBit flags 0
   let userVerified = testBit flags 2
-  let attestedCredentialData = CredentialData{..}
   return AuthenticatorData{..}
 
 data AttestationStatement = AF_Packed StmtPacked
@@ -198,11 +202,13 @@ data AttestationStatement = AF_Packed StmtPacked
   | AF_None
   deriving Show
 
-verifyFIDOU2F :: StmtFIDOU2F -> AuthenticatorData -> Digest SHA256 -> Either VerificationFailure ()
+verifyFIDOU2F :: StmtFIDOU2F -> AuthenticatorData
+  -> Digest SHA256
+  -> Either VerificationFailure ()
 verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
-  let CredentialData{..} = attestedCredentialData
+  CredentialData{..} <- maybe (Left MalformedAuthenticatorData) pure attestedCredentialData
   m <- either (Left . CBORDecodeError "verifyFIDOU2F") pure
-    $ CBOR.deserialiseOrFail $ BL.fromStrict credentialPublicKey
+    $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey credentialPublicKey
   pubU2F <- maybe (Left MalformedU2FPublicKey) pure $ do
       CBOR.TBytes x <- Map.lookup (-2 :: Int) m
       CBOR.TBytes y <- Map.lookup (-3) m
@@ -211,12 +217,12 @@ verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
         [ BB.word8 0x00
         , BB.byteString $ BA.convert rpIdHash
         , BB.byteString $ BA.convert clientDataHash
-        , BB.byteString credentialId
+        , BB.byteString $ unCredentialId credentialId
         , pubU2F]
-  case X509.verifySignature (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC)
-    (X509.certPubKey $ X509.getCertificate cert) dat sig of
-      X509.SignaturePass -> return ()
-      X509.SignatureFailed f -> Left $ SignatureFailure f
+  let pub = X509.certPubKey $ X509.getCertificate cert
+  case X509.verifySignature ec256 pub dat sig of
+    X509.SignaturePass -> return ()
+    X509.SignatureFailed f -> Left $ SignatureFailure f
 
 decodeAttestation :: CBOR.Decoder s Attestation
 decodeAttestation = do
@@ -240,14 +246,20 @@ data AuthenticatorData = AuthenticatorData
   { rpIdHash :: Digest SHA256
   , userPresent :: Bool
   , userVerified :: Bool
-  , attestedCredentialData :: CredentialData
+  , attestedCredentialData :: Maybe CredentialData
   , authenticatorDataExtension :: ByteString
   }
 
+newtype CredentialId = CredentialId { unCredentialId :: ByteString }
+  deriving (Show, Eq, H.Hashable, CBOR.Serialise)
+
+newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: ByteString }
+  deriving (Show, Eq, H.Hashable, CBOR.Serialise)
+
 data CredentialData = CredentialData
   { aaguid :: ByteString
-  , credentialId :: ByteString
-  , credentialPublicKey :: ByteString
+  , credentialId :: CredentialId
+  , credentialPublicKey :: CredentialPublicKey
   } deriving (Show, Eq)
 
 data Origin = Origin
@@ -280,18 +292,17 @@ False ?? e = Left e
 True ?? _ = Right ()
 infix 1 ??
 
-verify :: WebAuthnType
-  -> Challenge
+registerCredential :: Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
   -> Bool -- ^ require user verification?
-  -> AuthenticatorAttestationResponse
-  -> Either VerificationFailure CredentialData
-verify ty challenge RelyingParty{..} tbi verificationRequired
-  AuthenticatorAttestationResponse{..} = do
+  -> ByteString -- ^ clientDataJSON
+  -> ByteString -- ^ attestationObject
+  -> Either VerificationFailure (CredentialId, CredentialPublicKey)
+registerCredential challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = do
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
-  clientType == ty ?? InvalidType
+  clientType == Create ?? InvalidType
   challenge == clientChallenge ?? MismatchedChallenge
   rpOrigin == clientOrigin ?? MismatchedOrigin
   case clientTokenBinding of
@@ -317,6 +328,51 @@ verify ty challenge RelyingParty{..} tbi verificationRequired
 
   case stmt of
     AF_FIDO_U2F s -> verifyFIDOU2F s ad clientDataHash
-    AF_Packed s -> verifyPacked s adRaw client
+    AF_Packed s -> verifyPacked s adRaw clientDataHash
     stmt -> error $ "registerCredential: unsupported format: " ++ show stmt
-  return $ attestedCredentialData ad
+
+  case attestedCredentialData ad of
+    Nothing -> Left MalformedAuthenticatorData
+    Just c -> pure (credentialId c, credentialPublicKey c)
+
+ec256 :: X509.SignatureALG
+ec256 = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC
+
+verify :: Challenge
+  -> RelyingParty
+  -> Maybe Text -- ^ Token Binding ID in base64
+  -> Bool -- ^ require user verification?
+  -> ByteString -- ^ clientDataJSON
+  -> ByteString -- ^ authenticatorData
+  -> ByteString -- ^ signature
+  -> CredentialPublicKey -- ^ public key
+  -> Either VerificationFailure ()
+verify challenge RelyingParty{..} tbi verificationRequired clientDataJSON adRaw sig pub = do
+  CollectedClientData{..} <- either
+    (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
+  clientType == Get ?? InvalidType
+  -- challenge == clientChallenge ?? MismatchedChallenge
+  rpOrigin == clientOrigin ?? MismatchedOrigin
+  case clientTokenBinding of
+    TokenBindingUnsupported -> pure ()
+    TokenBindingSupported -> pure ()
+    TokenBindingPresent t -> case tbi of
+      Nothing -> Left UnexpectedPresenceOfTokenBinding
+      Just t'
+        | t == t' -> pure ()
+        | otherwise -> Left MismatchedTokenBinding
+
+  ad <- either (const $ Left MalformedAuthenticatorData) pure
+    $ C.runGet parseAuthenticatorData adRaw
+
+  let clientDataHash = hash clientDataJSON :: Digest SHA256
+  hash rpId == rpIdHash ad ?? MismatchedRPID
+  userPresent ad ?? UserNotPresent
+  not verificationRequired || userVerified ad ?? UserUnverified
+
+  let dat = adRaw <> BA.convert clientDataHash
+
+  let pub' = _wip pub
+  case X509.verifySignature ec256 pub' dat sig of
+    X509.SignaturePass -> return ()
+    X509.SignatureFailed f -> Left $ SignatureFailure f
