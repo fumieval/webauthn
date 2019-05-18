@@ -16,23 +16,6 @@ maintainer:          fumiexcel@gmail.com
 category:            Web
 extra-source-files:  CHANGELOG.md
 
-executable webauthn-demo
-  main-is: demo.hs
-  build-depends: base
-    , wai-middleware-static
-    , wai
-    , warp
-    , warp-tls
-    , http-types
-    , aeson
-    , stm
-    , text
-    , unordered-containers
-    , webauthn
-    , serialise
-  default-language: Haskell2010
-  hs-source-dirs: app
-
 library
   exposed-modules:     Web.WebAuthn
   -- other-modules:
@@ -45,6 +28,8 @@ library
     , bytestring
     , hashable
     , aeson
+    , asn1-types
+    , asn1-encoding
     , text
     , x509
     , x509-validation
