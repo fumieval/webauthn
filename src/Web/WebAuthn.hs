@@ -17,6 +17,7 @@ module Web.WebAuthn (
   , CollectedClientData(..)
   , AuthenticatorData(..)
   , CredentialData(..)
+  , CredentialPublicKey(..)
   , CredentialId(..)
   -- * verfication
   , VerificationFailure(..)
@@ -52,7 +53,11 @@ import qualified Codec.CBOR.Decoding as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail
 import Control.Monad hiding (fail)
-
+import qualified Crypto.PubKey.ECC.ECDSA as EC
+import qualified Crypto.PubKey.ECC.Types as EC
+import Data.ASN1.BinaryEncoding
+import Data.ASN1.Encoding
+import Data.ASN1.Types
 import Debug.Trace
 
 generateChallenge :: Int -> IO Challenge
@@ -118,10 +123,11 @@ data VerificationFailure
   | UserNotPresent
   | UserUnverified
   | UnsupportedAttestationFormat
-  | MalformedU2FPublicKey
+  | MalformedPublicKey
   | MalformedAuthenticatorData
   | MalformedX509Certificate
-  | SignatureFailure X509.SignatureFailure
+  | MalformedSignature
+  | SignatureFailure
   deriving Show
 
 data Attestation = Attestation
@@ -167,7 +173,7 @@ verifyPacked (StmtPacked _ sig cert) ad clientDataHash = do
   let pub = X509.certPubKey $ X509.getCertificate cert
   case X509.verifySignature ec256 pub (ad <> BA.convert clientDataHash) sig of
     X509.SignaturePass -> return ()
-    X509.SignatureFailed f -> Left $ SignatureFailure f
+    X509.SignatureFailed _ -> Left SignatureFailure
 
 assertKey :: Text -> CBOR.Decoder s ()
 assertKey k = do
@@ -209,7 +215,7 @@ verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
   CredentialData{..} <- maybe (Left MalformedAuthenticatorData) pure attestedCredentialData
   m <- either (Left . CBORDecodeError "verifyFIDOU2F") pure
     $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey credentialPublicKey
-  pubU2F <- maybe (Left MalformedU2FPublicKey) pure $ do
+  pubU2F <- maybe (Left MalformedPublicKey) pure $ do
       CBOR.TBytes x <- Map.lookup (-2 :: Int) m
       CBOR.TBytes y <- Map.lookup (-3) m
       return $ BB.word8 0x04 <> BB.byteString x <> BB.byteString y
@@ -222,7 +228,7 @@ verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
   let pub = X509.certPubKey $ X509.getCertificate cert
   case X509.verifySignature ec256 pub dat sig of
     X509.SignaturePass -> return ()
-    X509.SignatureFailed f -> Left $ SignatureFailure f
+    X509.SignatureFailed _ -> Left SignatureFailure
 
 decodeAttestation :: CBOR.Decoder s Attestation
 decodeAttestation = do
@@ -372,7 +378,32 @@ verify challenge RelyingParty{..} tbi verificationRequired clientDataJSON adRaw 
 
   let dat = adRaw <> BA.convert clientDataHash
 
-  let pub' = _wip pub
-  case X509.verifySignature ec256 pub' dat sig of
-    X509.SignaturePass -> return ()
-    X509.SignatureFailed f -> Left $ SignatureFailure f
+  pub' <- parsePublicKey pub
+
+  sig' <- maybe (Left MalformedSignature) pure $ parseSignature sig
+  case EC.verify SHA256 pub' sig' dat of
+    True  -> return ()
+    False -> Left SignatureFailure
+
+parsePublicKey :: CredentialPublicKey -> Either VerificationFailure EC.PublicKey
+parsePublicKey pub = do
+  m <- either (Left . CBORDecodeError "parsePublicKey") pure
+    $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey pub
+  maybe (Left MalformedPublicKey) pure $ do
+      CBOR.TInt crv <- Map.lookup (-1) m
+      CBOR.TBytes x <- Map.lookup (-2 :: Int) m
+      CBOR.TBytes y <- Map.lookup (-3) m
+      c <- case crv of
+        1 -> pure EC.SEC_p256r1
+        _ -> fail $ "parsePublicKey: unknown curve: " ++ show crv
+      return $ EC.PublicKey (EC.getCurveByName c) (EC.Point (fromOctet x) (fromOctet y))
+
+fromOctet :: B.ByteString -> Integer
+fromOctet = B.foldl' (\r x -> r `unsafeShiftL` 8 .|. fromIntegral x) 0
+
+parseSignature :: ByteString -> Maybe EC.Signature
+parseSignature b = case decodeASN1' BER b of
+  Left _ -> Nothing
+  Right asn1 -> case asn1 of
+    Start Sequence:IntVal r:IntVal s:End Sequence:_ -> Just $ EC.Signature r s
+    _ -> Nothing
