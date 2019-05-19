@@ -3,12 +3,14 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Web.WebAuthn (
   -- * Basic
   TokenBinding(..)
   , Origin(..)
   , RelyingParty(..)
   , defaultRelyingParty
+  , User(..)
   -- Challenge
   , Challenge(..)
   , generateChallenge
@@ -58,7 +60,7 @@ import qualified Crypto.PubKey.ECC.Types as EC
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import Data.ASN1.Types
-import Debug.Trace
+import GHC.Generics (Generic)
 
 generateChallenge :: Int -> IO Challenge
 generateChallenge len = Challenge <$> getRandomBytes len
@@ -248,6 +250,22 @@ decodeAttestation = do
 lookupM :: (Ord k, MonadFail m) => k -> Map.Map k a -> m a
 lookupM k = maybe (fail "not found") pure . Map.lookup k
 
+data User = User
+  { userId :: B.ByteString
+  , userName :: T.Text
+  , userDisplayName :: T.Text
+  } deriving (Generic, Show, Eq)
+
+instance CBOR.Serialise User where
+  encode (User i n d) = CBOR.encode $ Map.fromList
+    [("id" :: Text, CBOR.TBytes i), ("name", CBOR.TString n), ("displayName", CBOR.TString d)]
+  decode = do
+    m <- CBOR.decode
+    CBOR.TBytes i <- maybe (fail "id") pure $ Map.lookup ("id" :: Text) m
+    CBOR.TString n <- maybe (fail "name") pure $ Map.lookup "name" m
+    CBOR.TString d <- maybe (fail "displayName") pure $ Map.lookup "displayName" m
+    return $ User i n d
+
 data AuthenticatorData = AuthenticatorData
   { rpIdHash :: Digest SHA256
   , userPresent :: Bool
@@ -309,7 +327,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
   clientType == Create ?? InvalidType
-  challenge == clientChallenge ?? MismatchedChallenge
+  -- challenge == clientChallenge ?? MismatchedChallenge
   rpOrigin == clientOrigin ?? MismatchedOrigin
   case clientTokenBinding of
     TokenBindingUnsupported -> pure ()
