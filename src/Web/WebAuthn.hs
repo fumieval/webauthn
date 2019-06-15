@@ -152,30 +152,44 @@ decodeFIDOU2F (CBOR.TMap xs) = do
   return (StmtFIDOU2F cert sig)
 decodeFIDOU2F _ = Nothing
 
-data StmtPacked = StmtPacked Int ByteString (X509.SignedExact X509.Certificate)
+data StmtPacked = StmtPacked Int ByteString (Maybe (X509.SignedExact X509.Certificate))
   deriving Show
 
 decodePacked :: CBOR.Term -> CBOR.Decoder s StmtPacked
 decodePacked (CBOR.TMap xs) = do
   let m = Map.fromList xs
   CBOR.TInt alg <- Map.lookup (CBOR.TString "alg") m ??? "alg"
-  CBOR.TList (CBOR.TBytes certBS : _) <- Map.lookup (CBOR.TString "x5c") m ??? "x5c"
   CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m ??? "sig"
-  cert <- either fail pure $ X509.decodeSignedCertificate certBS
+  cert <- case Map.lookup (CBOR.TString "x5c") m of
+    Nothing -> pure Nothing
+    Just (CBOR.TList (CBOR.TBytes certBS : _)) ->
+      either fail (pure . Just) $ X509.decodeSignedCertificate certBS
   return $ StmtPacked alg sig cert
   where
     Nothing ??? e = fail e
     Just a ??? _ = pure a
 decodePacked _ = fail "decodePacked: expected a Map"
 
-verifyPacked :: StmtPacked -> B.ByteString
+verifyPacked :: StmtPacked -> AuthenticatorData
+  -> B.ByteString
   -> Digest SHA256
   -> Either VerificationFailure ()
-verifyPacked (StmtPacked _ sig cert) ad clientDataHash = do
-  let pub = X509.certPubKey $ X509.getCertificate cert
-  case X509.verifySignature ec256 pub (ad <> BA.convert clientDataHash) sig of
-    X509.SignaturePass -> return ()
-    X509.SignatureFailed _ -> Left SignatureFailure
+verifyPacked (StmtPacked _ sig cert) ad adRaw clientDataHash = do
+  let dat = adRaw <> BA.convert clientDataHash
+  case cert of
+    Just x509 -> do
+      let pub = X509.certPubKey $ X509.getCertificate x509
+      case X509.verifySignature ec256 pub dat sig of
+        X509.SignaturePass -> return ()
+        X509.SignatureFailed _ -> Left SignatureFailure
+    Nothing -> do
+      pub <- case attestedCredentialData ad of
+          Nothing -> Left MalformedAuthenticatorData
+          Just c -> parsePublicKey $ credentialPublicKey c
+      sig' <- maybe (Left MalformedSignature) pure $ parseSignature sig
+      case EC.verify SHA256 pub sig' dat of
+        True  -> return ()
+        False -> Left SignatureFailure
 
 parseAuthenticatorData :: C.Get AuthenticatorData
 parseAuthenticatorData = do
@@ -345,7 +359,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
 
   case stmt of
     AF_FIDO_U2F s -> verifyFIDOU2F s ad clientDataHash
-    AF_Packed s -> verifyPacked s adRaw clientDataHash
+    AF_Packed s -> verifyPacked s ad adRaw clientDataHash
     stmt -> error $ "registerCredential: unsupported format: " ++ show stmt
 
   case attestedCredentialData ad of
