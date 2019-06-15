@@ -4,6 +4,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Web.WebAuthn (
   -- * Basic
   TokenBinding(..)
@@ -141,32 +143,27 @@ data Attestation = Attestation
 data StmtFIDOU2F = StmtFIDOU2F (X509.SignedExact X509.Certificate) ByteString
   deriving Show
 
-decodeFIDOU2F :: CBOR.Decoder s StmtFIDOU2F
-decodeFIDOU2F = do
-  _ <- CBOR.decodeMapLen
-  assertKey "sig"
-  sig <- CBOR.decodeBytes
-  assertKey "x5c"
-  _ <- CBOR.decodeListLen
-  certBS <- CBOR.decodeBytes
+decodeFIDOU2F :: CBOR.Term -> Maybe StmtFIDOU2F
+decodeFIDOU2F (CBOR.TMap xs) = do
+  let m = Map.fromList xs
+  CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m
+  CBOR.TList [CBOR.TBytes certBS] <- Map.lookup (CBOR.TString "x5c") m
   cert <- either fail pure $ X509.decodeSignedCertificate certBS
   return (StmtFIDOU2F cert sig)
+decodeFIDOU2F _ = Nothing
 
 data StmtPacked = StmtPacked Int ByteString (X509.SignedExact X509.Certificate)
   deriving Show
 
-decodePacked :: CBOR.Decoder s StmtPacked
-decodePacked = do
-  _ <- CBOR.decodeMapLen
-  assertKey "alg"
-  alg <- CBOR.decode
-  assertKey "sig"
-  sig <- CBOR.decodeBytes
-  assertKey "x5c"
-  _ <- CBOR.decodeListLen
-  certBS <- CBOR.decodeBytes
+decodePacked :: CBOR.Term -> Maybe StmtPacked
+decodePacked (CBOR.TMap xs) = do
+  let m = Map.fromList xs
+  CBOR.TInt alg <- Map.lookup (CBOR.TString "alg") m
+  CBOR.TList [CBOR.TBytes certBS] <- Map.lookup (CBOR.TString "x5c") m
+  CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m
   cert <- either fail pure $ X509.decodeSignedCertificate certBS
-  return (StmtPacked alg sig cert)
+  return $ StmtPacked alg sig cert
+decodePacked _ = Nothing
 
 verifyPacked :: StmtPacked -> B.ByteString
   -> Digest SHA256
@@ -176,11 +173,6 @@ verifyPacked (StmtPacked _ sig cert) ad clientDataHash = do
   case X509.verifySignature ec256 pub (ad <> BA.convert clientDataHash) sig of
     X509.SignaturePass -> return ()
     X509.SignatureFailed _ -> Left SignatureFailure
-
-assertKey :: Text -> CBOR.Decoder s ()
-assertKey k = do
-  k' <- CBOR.decodeString
-  unless (k == k') $ fail $ "assertKey: " ++ T.unpack k ++ " /= " ++ T.unpack k'
 
 parseAuthenticatorData :: C.Get AuthenticatorData
 parseAuthenticatorData = do
@@ -234,16 +226,14 @@ verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
 
 decodeAttestation :: CBOR.Decoder s Attestation
 decodeAttestation = do
-  _ <- CBOR.decodeMapLen
-  assertKey "fmt"
-  fmt <- CBOR.decodeString
-  assertKey "attStmt"
+  m :: Map.Map Text CBOR.Term <- CBOR.decode
+  CBOR.TString fmt <- maybe (fail "fmt") pure $ Map.lookup "fmt" m
+  stmtTerm <- maybe (fail "stmt") pure $ Map.lookup "attStmt" m
   stmt <- case fmt of
-    "fido-u2f" -> AF_FIDO_U2F <$> decodeFIDOU2F
-    "packed" -> AF_Packed <$> decodePacked
-    stmt -> error $ "decodeAttestation: Unsupported format: " ++ show fmt
-  assertKey "authData"
-  adRaw <- CBOR.decodeBytes
+    "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ decodeFIDOU2F stmtTerm
+    "packed" -> maybe (fail "packed") (pure . AF_Packed) $ decodePacked stmtTerm
+    _ -> error $ "decodeAttestation: Unsupported format: " ++ show fmt
+  CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   ad <- either fail pure $ C.runGet parseAuthenticatorData adRaw
   return (Attestation ad adRaw stmt)
 
