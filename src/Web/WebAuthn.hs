@@ -155,18 +155,18 @@ decodeFIDOU2F _ = Nothing
 data StmtPacked = StmtPacked Int ByteString (X509.SignedExact X509.Certificate)
   deriving Show
 
-decodePacked :: CBOR.Term -> Either String StmtPacked
+decodePacked :: CBOR.Term -> CBOR.Decoder s StmtPacked
 decodePacked (CBOR.TMap xs) = do
   let m = Map.fromList xs
   CBOR.TInt alg <- Map.lookup (CBOR.TString "alg") m ??? "alg"
   CBOR.TList (CBOR.TBytes certBS : _) <- Map.lookup (CBOR.TString "x5c") m ??? "x5c"
   CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m ??? "sig"
-  cert <- X509.decodeSignedCertificate certBS
+  cert <- either fail pure $ X509.decodeSignedCertificate certBS
   return $ StmtPacked alg sig cert
   where
-    Nothing ??? e = Left e
-    Just a ??? _ = Right a
-decodePacked _ = Left "decodePacked: expected a Map"
+    Nothing ??? e = fail e
+    Just a ??? _ = pure a
+decodePacked _ = fail "decodePacked: expected a Map"
 
 verifyPacked :: StmtPacked -> B.ByteString
   -> Digest SHA256
@@ -234,7 +234,7 @@ decodeAttestation = do
   stmtTerm <- maybe (fail "stmt") pure $ Map.lookup "attStmt" m
   stmt <- case fmt of
     "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ decodeFIDOU2F stmtTerm
-    "packed" -> either fail (pure . AF_Packed) $ decodePacked stmtTerm
+    "packed" -> AF_Packed <$> decodePacked stmtTerm
     _ -> error $ "decodeAttestation: Unsupported format: " ++ show fmt
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   ad <- either fail pure $ C.runGet parseAuthenticatorData adRaw
