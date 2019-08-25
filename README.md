@@ -1,21 +1,9 @@
-Running the demo
+a WebAuthn verification library for relying parties.
+
+Demo
 ----
 
-Prepare certificate.pem and key.pem:
-
-```
-openssl genrsa -out key.pem 2048
-openssl req -new -key key.pem -out certificate.csr
-openssl x509 -req -in certificate.csr -signkey key.pem -out certificate.pem
-```
-
-Start the demo server:
-
-```
-$ cabal new-run webauthn-demo
-```
-
-Go to https://localhost:8080/ and click the "Login" button.
+See https://github.com/fumieval/yesod-auth-webauthn/blob/master/example.hs
 
 Support matrix
 ----
