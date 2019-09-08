@@ -1,0 +1,4 @@
+origin: "https://localhost:8080"
+endpoint: "webauthn"
+authorisedKeys:
+  fumieval: {"credentialId":"0IMo2OFRmM903AGEP5/1u5eVGlcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==","publicKey":"pQECAyYgASFYICJwKPYkRYKWH6OIAjp+IDghFnl06S0iSGjxn/arBp0OIlggoJmTH1ZaVWCrn3A2b+wZx4/mVePRFowKujU5xXmafJY="}

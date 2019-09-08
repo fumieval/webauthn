@@ -1,0 +1,51 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/cbor-js@0.1.0/cbor.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/base64-js@1.3.0/base64js.min.js"></script>
+  <script src="/webauthn/lib.js"></script>
+</head>
+<body>
+  <div id="webauthn-result"></div>
+  <div id="form-register">
+    <label for="webauthn-full-name">Full name</label>
+    <input type="text" id="webauthn-full-name">
+    <label for="webauthn-display-name">Displayed name</label>
+    <input type="text" id="webauthn-display-name">
+    <button id="webauthn-register">Register</button>
+  </div>
+  <div id="form-verify">
+    <button id="webauthn-login">Login with WebAuthn</button>
+    <input type="text" id="webauthn-id" placeholder="Identifier">
+  </div>
+  <script>
+    auth = WebAuthnProxy("webauthn");
+    var idInput = document.getElementById('webauthn-id');
+    document.getElementById("webauthn-register").addEventListener("click"
+      , function(e){
+      uid = [];
+      for (var a=[],i=0;i<64;i++){ uid.push(Math.random() * 256) }
+      let user = {
+          id: new Uint8Array(uid),
+          name: document.getElementById("webauthn-full-name").value,
+          displayName: document.getElementById("webauthn-display-name").value
+          };
+        auth.register(user, function(result){
+          var div = document.createElement("div");
+          div.innerText = "Add this to authorisedKeys: " + JSON.stringify(result);
+          document.getElementById("webauthn-result").appendChild(div);
+        });
+      });
+    document.getElementById("webauthn-login").addEventListener("click"
+      , function(e){
+        auth.lookup(idInput.value, function(cred){
+          auth.verify(cred, function(token){
+            var div = document.createElement("div");
+            div.innerText = "Your token: " + token;
+            document.getElementById("webauthn-result").appendChild(div);
+          });
+        })
+      });
+  </script>
+</body>
+</html>

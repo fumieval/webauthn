@@ -45,6 +45,7 @@ import qualified Data.Map as Map
 import Data.Text (Text)
 import Data.Text.Encoding
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
 import Crypto.Random
 import Crypto.Hash
@@ -284,8 +285,22 @@ data AuthenticatorData = AuthenticatorData
 newtype CredentialId = CredentialId { unCredentialId :: ByteString }
   deriving (Show, Eq, H.Hashable, CBOR.Serialise)
 
+instance FromJSON CredentialId where
+  parseJSON = fmap (CredentialId . Base64.decodeLenient . T.encodeUtf8) . parseJSON
+
+instance ToJSON CredentialId where
+  toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialId
+
 newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: ByteString }
   deriving (Show, Eq, H.Hashable, CBOR.Serialise)
+
+instance FromJSON CredentialPublicKey where
+  parseJSON v = parseJSON v
+    >>= either (const $ fail "failed to decode a public key") (pure . CredentialPublicKey)
+    . Base64.decode . T.encodeUtf8
+
+instance ToJSON CredentialPublicKey where
+  toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialPublicKey
 
 data CredentialData = CredentialData
   { aaguid :: ByteString

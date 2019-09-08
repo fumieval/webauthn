@@ -1,0 +1,5 @@
+packages:
+  ./
+  ./wai-middleware-webauthn/
+  ./wai-middleware-webauthn/demo/
+
