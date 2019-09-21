@@ -33,23 +33,22 @@
           name: document.getElementById("webauthn-full-name").value,
           displayName: document.getElementById("webauthn-display-name").value
           };
-        auth.register(user, function(result){
+        auth.register(user).then(result => {
           var div = document.createElement("div");
           div.innerText = "Add this to authorisedKeys: " + JSON.stringify(result);
           document.getElementById("webauthn-result").appendChild(div);
         });
       });
     document.getElementById("webauthn-login").addEventListener("click"
-      , function(e){
-        auth.lookup(idInput.value, function(cred){
-          auth.verify(cred, function(token){
-            var div = document.createElement("div");
-            div.innerText = "Your token: " + token;
-            currentToken = token;
-            document.getElementById("webauthn-result").appendChild(div);
-          });
-        })
-      });
+      , e => auth.lookup(idInput.value)
+        .then(cred => auth.verify(cred)
+          .then(function(token){
+              var div = document.createElement("div");
+              div.innerText = "Your token: " + token;
+              currentToken = token;
+              document.getElementById("webauthn-result").appendChild(div);
+            }))
+      );
     document.getElementById("run").addEventListener("click"
       , function(e){
         var xhr = new XMLHttpRequest();
