@@ -18,9 +18,12 @@
     <button id="webauthn-login">Login with WebAuthn</button>
     <input type="text" id="webauthn-id" placeholder="Identifier">
   </div>
+  <div>
+    <button id="run">GET /api</button>
   <script>
-    auth = WebAuthnProxy("webauthn");
+    var auth = WebAuthnProxy("webauthn");
     var idInput = document.getElementById('webauthn-id');
+    var currentToken = null;
     document.getElementById("webauthn-register").addEventListener("click"
       , function(e){
       uid = [];
@@ -42,9 +45,25 @@
           auth.verify(cred, function(token){
             var div = document.createElement("div");
             div.innerText = "Your token: " + token;
+            currentToken = token;
             document.getElementById("webauthn-result").appendChild(div);
           });
         })
+      });
+    document.getElementById("run").addEventListener("click"
+      , function(e){
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function()
+        {
+          if (xhr.readyState === XMLHttpRequest.DONE) {
+            var div = document.createElement("div");
+            div.innerText = xhr.status + " " + xhr.responseText;
+            document.getElementById("webauthn-result").appendChild(div);
+          }
+        };
+        xhr.open("GET", "/api", true);
+        xhr.setRequestHeader("Authorization", currentToken);
+        xhr.send();
       });
   </script>
 </body>
