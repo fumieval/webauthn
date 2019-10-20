@@ -53,6 +53,12 @@ defaultConfig = Config
 requestIdentifier :: Request -> Maybe Identifier
 requestIdentifier = fmap (Identifier . T.decodeUtf8) . lookup "Authorization" . requestHeaders
 
+headers :: [Header]
+headers = [("Access-Control-Allow-Origin", "*")]
+
+responseJSON :: J.ToJSON a => a -> Response
+responseJSON val = responseLBS status200 ((hContentType, "application/json") : headers) $ J.encode val
+
 -- | Create a web authentication middleware.
 --
 -- * @GET /webauthn/lib.js@ returns a JavaScript library containing helper functions.
@@ -75,34 +81,34 @@ mkMiddleware Config{..} = do
 
   return $ \app req sendResp -> case pathInfo req of
     x : xs | x == endpoint -> case xs of
-      ["lib.js"] -> sendResp $ responseFile status200 [] libJSPath Nothing -- TODO data-files
+      ["lib.js"] -> sendResp $ responseFile status200 headers libJSPath Nothing -- TODO data-files
       ["challenge"] -> do
         challenge <- generateChallenge 16
-        sendResp $ responseLBS status200 [] $ J.encode challenge
+        sendResp $ responseJSON challenge
       ["lookup", name] -> do
         sendResp $ case HM.lookup (Identifier name) authorisedKeys of
-          Nothing -> responseBuilder status404 [] "Not found"
-          Just (AuthorisedKey cid _) -> responseLBS status200 [] $ J.encode cid
+          Nothing -> responseBuilder status404 headers "Not found"
+          Just (AuthorisedKey cid _) -> responseJSON cid
       ["register"] -> do
         body <- lazyRequestBody req
         let (cdj, att, challenge) = CBOR.deserialise body
         case registerCredential challenge theRelyingParty Nothing False cdj att of
-          Left e -> sendResp $ responseBuilder status403 [] $ fromString $ show e
-          Right (cid, pub) -> sendResp $ responseLBS status200 [] $ J.encode $ AuthorisedKey cid pub
+          Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
+          Right (cid, pub) -> sendResp $ responseJSON $ AuthorisedKey cid pub
       ["verify"] -> do
         body <- lazyRequestBody req
         let (cid, cdj, ad, sig, challenge) = CBOR.deserialise body
         case HM.lookup cid authorisedMap of
           Just (name, pub) -> case verify challenge theRelyingParty Nothing False cdj ad sig pub of
-            Left e -> sendResp $ responseBuilder status403 [] $ fromString $ show e
+            Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
             Right _ -> do
               tokenRaw <- getRandomBytes 16
               let token = B.encode tokenRaw
               now <- getMonotonicTime
               atomicModifyIORef' vTokens $ \m -> (HM.insert token (name, now) m, ())
-              sendResp $ responseLBS status200 [] $ J.encode $ T.decodeUtf8 token
+              sendResp $ responseJSON $ T.decodeUtf8 token
           Nothing -> sendResp unauthorised
-      _ -> sendResp $ responseBuilder status404 [] "Not Found"
+      _ -> sendResp $ responseBuilder status404 headers "Not Found"
     _ | (xs, (_, token) : ys) <- break ((=="Authorization") . fst) $ requestHeaders req -> do
       m <- readIORef vTokens
       case HM.lookup token m of
@@ -111,4 +117,4 @@ mkMiddleware Config{..} = do
           { requestHeaders = ("Authorization", T.encodeUtf8 name) : xs ++ ys }) sendResp
     _ -> app req sendResp
   where
-    unauthorised = responseBuilder status403 [] "Unauthorised"
+    unauthorised = responseBuilder status403 headers "Unauthorised"
