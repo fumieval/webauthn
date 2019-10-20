@@ -5,6 +5,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Network.Wai.Middleware.WebAuthn where
 
+import Control.Concurrent
+import Control.Monad (forever)
 import Crypto.Random (getRandomBytes)
 import Web.WebAuthn as W
 import qualified Data.Aeson as J
@@ -36,6 +38,7 @@ data Config = Config
   { authorisedKeys :: HM.HashMap Identifier AuthorisedKey
   , endpoint :: Text
   , origin :: Origin
+  , timeout :: Double
   } deriving Generic
 instance J.FromJSON Config
 
@@ -44,6 +47,7 @@ defaultConfig = Config
   { authorisedKeys = mempty
   , endpoint = "webauthn"
   , origin = Origin "https" "localhost" 8080
+  , timeout = 86400
   }
 
 requestIdentifier :: Request -> Maybe Identifier
@@ -63,6 +67,11 @@ mkMiddleware Config{..} = do
   let authorisedMap = HM.fromList
         [(cid, (name, pub)) | (name, AuthorisedKey cid pub) <- HM.toList authorisedKeys]
   let theRelyingParty = W.defaultRelyingParty origin
+
+  _ <- forkIO $ forever $ do
+      now <- getMonotonicTime
+      atomicModifyIORef' vTokens $ \m -> (HM.filter ((<now) . (+timeout) . snd) m, ())
+      threadDelay 10000000
 
   return $ \app req sendResp -> case pathInfo req of
     x : xs | x == endpoint -> case xs of
