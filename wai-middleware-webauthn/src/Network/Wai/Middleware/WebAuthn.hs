@@ -76,7 +76,7 @@ mkMiddleware Config{..} = do
 
   _ <- forkIO $ forever $ do
       now <- getMonotonicTime
-      atomicModifyIORef' vTokens $ \m -> (HM.filter ((<now) . (+timeout) . snd) m, ())
+      atomicModifyIORef' vTokens $ \m -> (HM.filter ((now<) . (+timeout) . snd) m, ())
       threadDelay 10000000
 
   return $ \app req sendResp -> case pathInfo req of
