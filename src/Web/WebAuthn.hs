@@ -349,7 +349,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
   clientType == Create ?? InvalidType
-  -- challenge == clientChallenge ?? MismatchedChallenge
+  challenge == clientChallenge ?? MismatchedChallenge
   rpOrigin == clientOrigin ?? MismatchedOrigin
   case clientTokenBinding of
     TokenBindingUnsupported -> pure ()
@@ -397,7 +397,7 @@ verify challenge RelyingParty{..} tbi verificationRequired clientDataJSON adRaw 
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
   clientType == Get ?? InvalidType
-  -- challenge == clientChallenge ?? MismatchedChallenge
+  challenge == clientChallenge ?? MismatchedChallenge
   rpOrigin == clientOrigin ?? MismatchedOrigin
   case clientTokenBinding of
     TokenBindingUnsupported -> pure ()
