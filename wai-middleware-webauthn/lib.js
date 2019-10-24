@@ -56,7 +56,8 @@ function WebAuthnProxy(endpoint){
         .then((cred) => {
           postJSON(endpoint + "/register"
             , CBOR.encode(
-                [ new Uint8Array(cred.response.clientDataJSON)
+                [ user
+                , new Uint8Array(cred.response.clientDataJSON)
                 , new Uint8Array(cred.response.attestationObject)
                 , new Uint8Array(rawChallenge)])).then(resolve).catch(reject);
         })

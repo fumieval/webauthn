@@ -4,14 +4,61 @@
   <script src="https://cdn.jsdelivr.net/npm/cbor-js@0.1.0/cbor.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/base64-js@1.3.0/base64js.min.js"></script>
   <script src="/webauthn/lib.js"></script>
+  <style>
+    body {
+      background-color: #667;
+    }
+    div {
+      width: 600px;
+      background-color: white;
+      padding: 2em;
+      margin-left: auto;
+      margin-right: auto;
+      margin-top: 1em;
+      margin-bottom: 1em;
+    }
+    section {
+      border: 1px solid #bbb;
+      padding: 0.5em;
+    }
+    pre {
+      background-color: #eeeeee;
+    }
+    .placeholder {
+      color: #ccc;
+    }
+    button {
+      border: none;
+      border-radius: 1em;
+      font-size: larger;
+      text-align: center;
+      background-color: #86ab81;
+      padding: 0.5em;
+      color: white;
+      margin: 0.5em;
+    }
+    input {
+      height: 2.5em;
+      border-radius: 5px;
+      border: 1px solid #bbb;
+      margin-bottom: 0.5em;
+    }
+    #form-register {
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-  <div id="webauthn-result"></div>
+  <div id="webauthn-result">
+    <span class="placeholder">Messages will be displayed here</span>
+  </div>
   <div id="form-register">
     <label for="webauthn-full-name">Full name</label>
     <input type="text" id="webauthn-full-name">
+    <br>
     <label for="webauthn-display-name">Displayed name</label>
     <input type="text" id="webauthn-display-name">
+    <br>
     <button id="webauthn-register">Register</button>
   </div>
   <div id="form-verify">
@@ -34,20 +81,30 @@
           displayName: document.getElementById("webauthn-display-name").value
           };
         auth.register(user).then(result => {
-          var div = document.createElement("div");
-          div.innerText = "Add this to authorisedKeys: " + JSON.stringify(result);
+          var div = document.createElement("section");
+          div.innerHTML = "Add the following pair to config.yaml: <pre><code>"
+            + user.displayName + ":\n"
+            + "- credentialId: " + result.credentialId + "\n"
+            + "  publicKey: " + result.publicKey + "\n"
+            + "</code></pre>";
           document.getElementById("webauthn-result").appendChild(div);
         });
       });
     document.getElementById("webauthn-login").addEventListener("click"
       , e => auth.lookup(idInput.value)
-        .then(cred => auth.verify(cred)
-          .then(function(token){
-              var div = document.createElement("div");
+        .then(function(creds){
+          if (creds.length == 0){
+            var div = document.createElement("section");
+            div.innerText = "No credential found";
+            return;
+          }
+          auth.verify(creds[0])
+            .then(function(token){
+              var div = document.createElement("section");
               div.innerText = "Your token: " + token;
               currentToken = token;
               document.getElementById("webauthn-result").appendChild(div);
-            }))
+            });})
       );
     document.getElementById("run").addEventListener("click"
       , function(e){
@@ -55,7 +112,7 @@
         xhr.onreadystatechange = function()
         {
           if (xhr.readyState === XMLHttpRequest.DONE) {
-            var div = document.createElement("div");
+            var div = document.createElement("section");
             div.innerText = xhr.status + " " + xhr.responseText;
             document.getElementById("webauthn-result").appendChild(div);
           }

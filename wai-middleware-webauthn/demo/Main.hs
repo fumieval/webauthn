@@ -16,7 +16,7 @@ import Paths_demo
 main :: IO ()
 main = do
   config <- getDataFileName "config.yaml" >>= Yaml.decodeFileThrow
-  mid <- WebAuthn.mkMiddleware config
+  mid <- WebAuthn.mkMiddleware $ WebAuthn.staticKeys <$> config
   path <- getDataFileName "index.html"
   pathCert <- getDataFileName "certificate.pem"
   pathKey <- getDataFileName "key.pem"
