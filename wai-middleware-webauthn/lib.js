@@ -39,15 +39,9 @@ function WebAuthnProxy(endpoint){
     });
   }
 
-  function convertBase64(str){
-    return (str + '==='.slice((str.length + 3) % 4))
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-  }
-
   result.register = user => new Promise(function(resolve, reject){
     getJSON(endpoint + "/challenge").then(function(challenge){
-      let rawChallenge = base64js.toByteArray(convertBase64(challenge));
+      let rawChallenge = base64js.toByteArray(challenge);
       let info =
           { challenge: rawChallenge
           , user: user
@@ -56,6 +50,9 @@ function WebAuthnProxy(endpoint){
           , pubKeyCredParams:
             [{ type: "public-key"
             , alg: -7
+            }
+            ,{ type: "public-key"
+            , alg: -257
             }]
           , attestation: "direct"};
       navigator.credentials.create({publicKey: info})
@@ -74,8 +71,8 @@ function WebAuthnProxy(endpoint){
 
   result.verify = credStr => new Promise(function(resolve, reject){
     getJSON(endpoint + "/challenge").then(function(challenge){
-      let rawChallenge = base64js.toByteArray(convertBase64(challenge));
-      let credId = base64js.toByteArray(convertBase64(credStr));
+      let rawChallenge = base64js.toByteArray(challenge);
+      let credId = base64js.toByteArray(credStr);
       navigator.credentials.get({publicKey:
         { challenge: rawChallenge
         , allowCredentials:

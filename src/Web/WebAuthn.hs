@@ -38,7 +38,7 @@ import qualified Data.ByteArray as BA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Base64 as Base64
+import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.Hashable as H
 import Data.Int
 import qualified Data.Map as Map
@@ -60,6 +60,9 @@ import Control.Monad.Fail
 import Control.Monad hiding (fail)
 import qualified Crypto.PubKey.ECC.ECDSA as EC
 import qualified Crypto.PubKey.ECC.Types as EC
+import qualified Crypto.PubKey.RSA.PKCS15 as RSA
+import qualified Crypto.PubKey.RSA.Types as RSA
+import qualified Crypto.PubKey.RSA.Prim as RSA
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import Data.ASN1.Types
@@ -128,11 +131,12 @@ data VerificationFailure
   | UserNotPresent
   | UserUnverified
   | UnsupportedAttestationFormat
+  | UnsupportedAlgorithm Int
   | MalformedPublicKey
   | MalformedAuthenticatorData
   | MalformedX509Certificate
   | MalformedSignature
-  | SignatureFailure
+  | SignatureFailure String
   deriving Show
 
 data Attestation = Attestation
@@ -171,6 +175,23 @@ decodePacked (CBOR.TMap xs) = do
     Just a ??? _ = pure a
 decodePacked _ = fail "decodePacked: expected a Map"
 
+data StmtTPM = StmtTPM Int ByteString (X509.SignedExact X509.Certificate) ByteString deriving Show
+
+decodeTPM :: CBOR.Term -> CBOR.Decoder s StmtTPM
+decodeTPM (CBOR.TMap xs) = do
+  let m = Map.fromList xs
+  CBOR.TInt alg <- Map.lookup (CBOR.TString "alg") m ??? "alg"
+  CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m ??? "sig"
+  CBOR.TList (CBOR.TBytes certBS : _) <- Map.lookup (CBOR.TString "x5c") m ??? "x5c"
+  aikCert <- either fail pure $ X509.decodeSignedCertificate certBS
+  CBOR.TBytes certInfo <- Map.lookup (CBOR.TString "certInfo") m ??? "certInfo"
+  -- pubArea <- Map.lookup (CBOR.TString "pubArea") ?? "pubArea"
+  return $ StmtTPM alg sig aikCert certInfo
+  where
+    Nothing ??? e = fail e
+    Just a ??? _ = pure a
+decodeTPM _ = fail "decodeTPM: expected a Map"
+
 verifyPacked :: StmtPacked -> AuthenticatorData
   -> B.ByteString
   -> Digest SHA256
@@ -182,15 +203,28 @@ verifyPacked (StmtPacked _ sig cert) ad adRaw clientDataHash = do
       let pub = X509.certPubKey $ X509.getCertificate x509
       case X509.verifySignature ec256 pub dat sig of
         X509.SignaturePass -> return ()
-        X509.SignatureFailed _ -> Left SignatureFailure
+        X509.SignatureFailed _ -> Left $ SignatureFailure "Packed"
     Nothing -> do
       pub <- case attestedCredentialData ad of
           Nothing -> Left MalformedAuthenticatorData
           Just c -> parsePublicKey $ credentialPublicKey c
-      sig' <- maybe (Left MalformedSignature) pure $ parseSignature sig
-      case EC.verify SHA256 pub sig' dat of
-        True  -> return ()
-        False -> Left SignatureFailure
+      verifySig pub sig dat
+
+verifyTPM :: StmtTPM -> AuthenticatorData
+  -> B.ByteString
+  -> Digest SHA256
+  -> Either VerificationFailure ()
+verifyTPM (StmtTPM alg sig x509 certInfo) ad adRaw clientDataHash = do
+  -- TODO Verify that the public key specified by the parameters and unique fields of pubArea is identical to the credentialPublicKey in the attestedCredentialData in authenticatorData.
+  let pub = X509.certPubKey $ X509.getCertificate x509
+  -- let attToBeSigned = adRaw <> BA.convert clientDataHash
+  -- https://www.iana.org/assignments/cose/cose.xhtml#algorithms
+  case alg of
+    -65535 -> do
+      case X509.verifySignature (X509.SignatureALG X509.HashSHA1 X509.PubKeyALG_RSA) pub certInfo sig of
+        X509.SignaturePass -> return ()
+        X509.SignatureFailed _ -> Left $ SignatureFailure "TPM"
+    _ -> Left $ UnsupportedAlgorithm alg
 
 parseAuthenticatorData :: C.Get AuthenticatorData
 parseAuthenticatorData = do
@@ -213,7 +247,7 @@ parseAuthenticatorData = do
   return AuthenticatorData{..}
 
 data AttestationStatement = AF_Packed StmtPacked
-  | AF_TPM
+  | AF_TPM StmtTPM
   | AF_AndroidKey
   | AF_AndroidSafetyNet
   | AF_FIDO_U2F StmtFIDOU2F
@@ -240,7 +274,7 @@ verifyFIDOU2F (StmtFIDOU2F cert sig) AuthenticatorData{..} clientDataHash = do
   let pub = X509.certPubKey $ X509.getCertificate cert
   case X509.verifySignature ec256 pub dat sig of
     X509.SignaturePass -> return ()
-    X509.SignatureFailed _ -> Left SignatureFailure
+    X509.SignatureFailed _ -> Left $ SignatureFailure "FIDOU2F"
 
 decodeAttestation :: CBOR.Decoder s Attestation
 decodeAttestation = do
@@ -250,6 +284,7 @@ decodeAttestation = do
   stmt <- case fmt of
     "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ decodeFIDOU2F stmtTerm
     "packed" -> AF_Packed <$> decodePacked stmtTerm
+    "tpm" -> AF_TPM <$> decodeTPM stmtTerm
     _ -> error $ "decodeAttestation: Unsupported format: " ++ show fmt
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   ad <- either fail pure $ C.runGet parseAuthenticatorData adRaw
@@ -375,6 +410,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
   case stmt of
     AF_FIDO_U2F s -> verifyFIDOU2F s ad clientDataHash
     AF_Packed s -> verifyPacked s ad adRaw clientDataHash
+    AF_TPM s -> verifyTPM s ad adRaw clientDataHash
     stmt -> error $ "registerCredential: unsupported format: " ++ show stmt
 
   case attestedCredentialData ad of
@@ -419,24 +455,60 @@ verify challenge RelyingParty{..} tbi verificationRequired clientDataJSON adRaw 
   let dat = adRaw <> BA.convert clientDataHash
 
   pub' <- parsePublicKey pub
+  verifySig pub' sig dat
 
+verifySig :: PublicKey -> ByteString -> ByteString -> Either VerificationFailure ()
+verifySig (PubEC pub) sig dat = do
   sig' <- maybe (Left MalformedSignature) pure $ parseSignature sig
-  case EC.verify SHA256 pub' sig' dat of
-    True  -> return ()
-    False -> Left SignatureFailure
+  case EC.verify SHA256 pub sig' dat of
+    True  -> pure ()
+    False -> Left $ SignatureFailure "EC256"
+verifySig (PubRSA pub) sig dat
+  | Just dat' <- parseRS256Signature (RSA.ep pub sig), dat' == BA.convert (hashWith SHA256 dat) = pure ()
+  | otherwise = Left $ SignatureFailure "RS256"
 
-parsePublicKey :: CredentialPublicKey -> Either VerificationFailure EC.PublicKey
+parseRS256Signature :: ByteString -> Maybe B.ByteString
+parseRS256Signature = unpad >=> \b -> case decodeASN1' BER b of
+  Left _ -> Nothing
+  Right asn1 -> case asn1 of
+    Start Sequence:Start Sequence:_:_:End Sequence:OctetString b:_ -> Just b
+    _ -> Nothing
+
+unpad :: B.ByteString -> Maybe B.ByteString
+unpad packed
+    | paddingSuccess = Just m
+    | otherwise      = Nothing
+  where
+        (zt, ps0m)   = B.splitAt 2 packed
+        (ps, zm)     = B.span (/= 0) ps0m
+        (z, m)       = B.splitAt 1 zm
+        paddingSuccess = and [ zt == "\NUL\SOH"
+                              , z == "\NUL"
+                              , B.length ps >= 8
+                              ]
+
+data PublicKey = PubEC EC.PublicKey | PubRSA RSA.PublicKey
+
+parsePublicKey :: CredentialPublicKey -> Either VerificationFailure PublicKey
 parsePublicKey pub = do
   m <- either (Left . CBORDecodeError "parsePublicKey") pure
     $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey pub
-  maybe (Left MalformedPublicKey) pure $ do
-      CBOR.TInt crv <- Map.lookup (-1) m
-      CBOR.TBytes x <- Map.lookup (-2 :: Int) m
-      CBOR.TBytes y <- Map.lookup (-3) m
-      c <- case crv of
-        1 -> pure EC.SEC_p256r1
-        _ -> fail $ "parsePublicKey: unknown curve: " ++ show crv
-      return $ EC.PublicKey (EC.getCurveByName c) (EC.Point (fromOctet x) (fromOctet y))
+  maybe (Left $ MalformedPublicKey) pure $ do
+      CBOR.TInt ty <- Map.lookup 3 m
+      case ty of
+        -7 -> do
+          CBOR.TInt crv <- Map.lookup (-1) m
+          CBOR.TBytes x <- Map.lookup (-2 :: Int) m
+          CBOR.TBytes y <- Map.lookup (-3) m
+          c <- case crv of
+            1 -> pure EC.SEC_p256r1
+            _ -> fail $ "parsePublicKey: unknown curve: " ++ show crv
+          return $ PubEC $ EC.PublicKey (EC.getCurveByName c) (EC.Point (fromOctet x) (fromOctet y))
+        -257 -> do
+          CBOR.TBytes n <- Map.lookup (-1) m
+          CBOR.TBytes e <- Map.lookup (-2) m
+          return $ PubRSA $ RSA.PublicKey 256 (fromOctet n) (fromOctet e)
+        _ -> fail $ "parsePublicKey: unknown algorithm"
 
 fromOctet :: B.ByteString -> Integer
 fromOctet = B.foldl' (\r x -> r `unsafeShiftL` 8 .|. fromIntegral x) 0
