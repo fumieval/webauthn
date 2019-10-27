@@ -17,9 +17,13 @@ category:            Web
 extra-source-files:  CHANGELOG.md
 
 library
-  exposed-modules:     Web.WebAuthn
-  -- other-modules:
-  -- other-extensions:
+  exposed-modules:
+    Web.WebAuthn
+    Web.WebAuthn.Types
+    Web.WebAuthn.FIDOU2F
+    Web.WebAuthn.Packed
+    Web.WebAuthn.Signature
+    Web.WebAuthn.TPM
   build-depends:       base
     , containers
     , cryptonite
@@ -37,4 +41,5 @@ library
     , serialise
     , base64-bytestring
   hs-source-dirs:      src
+  ghc-options: -Wall
   default-language:    Haskell2010
