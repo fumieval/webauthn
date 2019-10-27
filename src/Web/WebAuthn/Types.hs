@@ -1,11 +1,8 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 module Web.WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)

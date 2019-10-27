@@ -1,10 +1,6 @@
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Web.WebAuthn (
   -- * Basic
@@ -17,7 +13,6 @@ module Web.WebAuthn (
   , Challenge(..)
   , generateChallenge
   , WebAuthnType(..)
-  , Attestation(..)
   , CollectedClientData(..)
   , AuthenticatorData(..)
   , CredentialData(..)
@@ -77,12 +72,6 @@ parseAuthenticatorData = do
   let userVerified = testBit flags 2
   return AuthenticatorData{..}
 
-data Attestation = Attestation
-  { attestationAuthData :: AuthenticatorData
-  , attestationAuthDataRaw :: ByteString
-  , attestationStatement :: AttestationStatement
-  }
-
 data AttestationStatement = AF_Packed Packed.Stmt
   | AF_TPM TPM.Stmt
   | AF_AndroidKey
@@ -141,7 +130,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
     AF_Packed s -> Packed.verify s ad adRaw clientDataHash
     AF_TPM s -> TPM.verify s ad adRaw clientDataHash
     AF_None -> pure ()
-    stmt -> error $ "registerCredential: unsupported format: " ++ show stmt
+    _ -> error $ "registerCredential: unsupported format: " ++ show stmt
 
   case attestedCredentialData ad of
     Nothing -> Left MalformedAuthenticatorData
