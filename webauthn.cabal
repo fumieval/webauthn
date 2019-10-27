@@ -39,6 +39,7 @@ library
     , x509-validation
     , memory
     , serialise
+    , base16-bytestring
     , base64-bytestring
   hs-source-dirs:      src
   ghc-options: -Wall

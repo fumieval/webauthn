@@ -7,7 +7,6 @@ import qualified Data.X509 as X509
 import qualified Data.X509.Validation as X509
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
-import qualified Codec.Serialise as CBOR
 import qualified Data.Map as Map
 import Web.WebAuthn.Types (VerificationFailure(..), AuthenticatorData)
 

@@ -83,10 +83,11 @@
         auth.register(user).then(result => {
           var div = document.createElement("section");
           div.innerHTML = "Add the following pair to config.yaml: <pre><code>"
-            + user.displayName + ":\n"
-            + "- credentialId: " + result.credentialId + "\n"
-            + "  publicKey: " + result.publicKey + "\n"
-            + "</code></pre>";
+            + user.displayName + ":"
+            + "\n- aaguid: " + result.aaguid
+            + "\n  credentialId: " + result.credentialId
+            + "\n  credentialPublicKey: " + result.credentialPublicKey
+            + "\n</code></pre>";
           document.getElementById("webauthn-result").appendChild(div);
         });
       });
@@ -98,7 +99,7 @@
             div.innerText = "No credential found";
             return;
           }
-          auth.verify(creds[0])
+          auth.verify(creds[0].credentialId)
             .then(function(token){
               var div = document.createElement("section");
               div.innerText = "Your token: " + token;

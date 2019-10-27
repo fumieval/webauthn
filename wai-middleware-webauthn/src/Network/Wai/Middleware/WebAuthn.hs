@@ -5,8 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Network.Wai.Middleware.WebAuthn
-  ( AuthorisedKey(..)
-  , Identifier(..)
+  ( Identifier(..)
   , Handler(..)
   , staticKeys
   , Config(..)
@@ -34,39 +33,32 @@ import Network.HTTP.Types
 import Paths_wai_middleware_webauthn
 import qualified Codec.Serialise as CBOR
 
-data AuthorisedKey = AuthorisedKey
-  { credentialId :: CredentialId
-  , publicKey :: CredentialPublicKey
-  } deriving Generic
-instance J.FromJSON AuthorisedKey
-instance J.ToJSON AuthorisedKey
-
 newtype Identifier = Identifier { unIdentifier :: Text }
   deriving (Show, Eq, Ord, J.FromJSON, J.ToJSON, J.FromJSONKey, J.ToJSONKey, Hashable)
 
 data Handler = Handler
-  { findCredentialId :: Identifier -> IO [CredentialId]
+  { findCredentials :: Identifier -> IO [CredentialData]
   , findPublicKey :: CredentialId -> IO (Maybe (Identifier, CredentialPublicKey))
-  , registerKey :: User -> AuthorisedKey -> IO ()
+  , registerKey :: User -> CredentialData -> IO ()
   }
 
-staticKeys :: HM.HashMap Identifier [AuthorisedKey] -> Handler
+staticKeys :: HM.HashMap Identifier [CredentialData] -> Handler
 staticKeys authorisedKeys = Handler
-  { findCredentialId = \ident -> pure
-    $ maybe [] (map (\(AuthorisedKey i _) -> i))
+  { findCredentials = \ident -> pure
+    $ maybe [] id
     $ HM.lookup ident authorisedKeys
   , findPublicKey = \cid -> pure $ HM.lookup cid authorisedMap
   , registerKey = \_ _ -> pure ()
   }
   where
     authorisedMap = HM.fromList
-      [(cid, (name, pub)) | (name, ks) <- HM.toList authorisedKeys, AuthorisedKey cid pub <- ks]
+      [(cid, (name, pub)) | (name, ks) <- HM.toList authorisedKeys, CredentialData _ cid pub <- ks]
 
 data Config a = Config
-  { handler :: a
-  , endpoint :: Text
-  , origin :: Origin
-  , timeout :: Double
+  { handler :: !a
+  , endpoint :: !Text
+  , origin :: !Origin
+  , timeout :: !Double
   } deriving (Functor, Generic)
 instance J.FromJSON a => J.FromJSON (Config a)
 
@@ -111,17 +103,16 @@ mkMiddleware Config{..} = do
       ["challenge"] -> do
         challenge <- generateChallenge 16
         sendResp $ responseJSON challenge
-      ["lookup", name] -> findCredentialId handler (Identifier name)
+      ["lookup", name] -> findCredentials handler (Identifier name)
         >>= sendResp . responseJSON
       ["register"] -> do
         body <- lazyRequestBody req
         let (user, cdj, att, challenge) = CBOR.deserialise body
         case registerCredential challenge theRelyingParty Nothing False cdj att of
           Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
-          Right (cid, pub) -> do
-            let k = AuthorisedKey cid pub
-            registerKey handler user k
-            sendResp $ responseJSON k
+          Right cd -> do
+            registerKey handler user cd
+            sendResp $ responseJSON cd
       ["verify"] -> do
         body <- lazyRequestBody req
         let (cid, cdj, ad, sig, challenge) = CBOR.deserialise body

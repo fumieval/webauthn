@@ -16,6 +16,7 @@ module Web.WebAuthn.Types (
   , AuthenticatorData(..)
   -- * Credential
   , CredentialData(..)
+  , AAGUID(..)
   , CredentialPublicKey(..)
   , CredentialId(..)
   , User(..)
@@ -27,7 +28,8 @@ import Prelude hiding (fail)
 import Data.Aeson as J
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Base64 as Base64
+import qualified Data.ByteString.Base64.URL as Base64
+import Data.ByteString.Base16 as Base16
 import qualified Data.Hashable as H
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -137,11 +139,22 @@ instance FromJSON CredentialPublicKey where
 instance ToJSON CredentialPublicKey where
   toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialPublicKey
 
+newtype AAGUID = AAGUID { unAAGUID :: ByteString } deriving (Show, Eq)
+
+instance FromJSON AAGUID where
+  parseJSON v = AAGUID . fst . Base16.decode . T.encodeUtf8 <$> parseJSON v
+
+instance ToJSON AAGUID where
+  toJSON = toJSON . T.decodeUtf8 . Base16.encode . unAAGUID
+
 data CredentialData = CredentialData
-  { aaguid :: ByteString
+  { aaguid :: AAGUID
   , credentialId :: CredentialId
   , credentialPublicKey :: CredentialPublicKey
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Generic)
+
+instance J.FromJSON CredentialData
+instance J.ToJSON CredentialData
 
 data User = User
   { userId :: B.ByteString

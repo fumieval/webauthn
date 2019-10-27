@@ -16,6 +16,7 @@ module Web.WebAuthn (
   , CollectedClientData(..)
   , AuthenticatorData(..)
   , CredentialData(..)
+  , AAGUID(..)
   , CredentialPublicKey(..)
   , CredentialId(..)
   -- * verfication
@@ -60,7 +61,7 @@ parseAuthenticatorData = do
   _counter <- C.getBytes 4
   attestedCredentialData <- if testBit flags 6
     then do
-      aaguid <- C.getBytes 16
+      aaguid <- AAGUID <$> C.getBytes 16
       len <- C.getWord16be
       credentialId <- CredentialId <$> C.getBytes (fromIntegral len)
       n <- C.remaining
@@ -99,7 +100,7 @@ registerCredential :: Challenge
   -> Bool -- ^ require user verification?
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
-  -> Either VerificationFailure (CredentialId, CredentialPublicKey)
+  -> Either VerificationFailure CredentialData
 registerCredential challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = do
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
@@ -134,7 +135,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
 
   case attestedCredentialData ad of
     Nothing -> Left MalformedAuthenticatorData
-    Just c -> pure (credentialId c, credentialPublicKey c)
+    Just c -> pure c
 
 verify :: Challenge
   -> RelyingParty
