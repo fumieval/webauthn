@@ -66,7 +66,7 @@ defaultConfig :: a -> Config a
 defaultConfig a = Config
   { handler = a
   , endpoint = "webauthn"
-  , origin = Origin "https" "localhost" 8080
+  , origin = Origin "https" "localhost" (Just 8080)
   , timeout = 86400
   }
 

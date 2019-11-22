@@ -89,7 +89,7 @@ instance FromJSON WebAuthnType where
 data Origin = Origin
   { originScheme :: Text
   , originHost :: Text
-  , originPort :: Int
+  , originPort :: Maybe Int
   }
   deriving (Show, Eq, Ord)
 
@@ -107,9 +107,11 @@ defaultRelyingParty orig = RelyingParty orig (encodeUtf8 $ originHost orig) Fals
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
     (sch, url) -> case T.break (==':') $ T.drop 3 url of
-      (host, portPath) -> case T.decimal $ T.drop 1 portPath of
-        Left e -> fail e
-        Right (port, _) -> pure $ Origin sch host port
+      (host, portStr)
+        | T.null portStr -> pure $ Origin sch host Nothing
+        | otherwise -> case T.decimal $ T.drop 1 portStr of
+          Left e -> fail e
+          Right (port, _) -> pure $ Origin sch host $ Just port
 
 data AuthenticatorData = AuthenticatorData
   { rpIdHash :: Digest SHA256
