@@ -7,11 +7,13 @@
 module Network.Wai.Middleware.WebAuthn
   ( Identifier(..)
   , Handler(..)
+  , StaticKeys
   , staticKeys
   , Config(..)
   , defaultConfig
   , requestIdentifier
-  , mkMiddleware)
+  , mkMiddleware
+  )
   where
 
 import Control.Concurrent
@@ -42,7 +44,9 @@ data Handler = Handler
   , registerKey :: User -> CredentialData -> IO ()
   }
 
-staticKeys :: HM.HashMap Identifier [CredentialData] -> Handler
+type StaticKeys = HM.HashMap Identifier [CredentialData]
+
+staticKeys :: StaticKeys -> Handler
 staticKeys authorisedKeys = Handler
   { findCredentials = \ident -> pure
     $ maybe [] id
