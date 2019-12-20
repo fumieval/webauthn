@@ -68,7 +68,7 @@
   <div>
     <button id="run">GET /api</button>
   <script>
-    var auth = WebAuthnProxy("webauthn");
+    var auth = WebAuthnProxy("localhost", "webauthn");
     var idInput = document.getElementById('webauthn-id');
     var currentToken = null;
     document.getElementById("webauthn-register").addEventListener("click"

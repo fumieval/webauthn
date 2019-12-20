@@ -20,7 +20,7 @@ executable demo
   main-is:             Main.hs
   -- other-extensions:
   ghc-options: -threaded
-  build-depends:       base ^>=4.12.0.0
+  build-depends:       base >=4.11.0.0
     , warp
     , warp-tls
     , wai-middleware-webauthn

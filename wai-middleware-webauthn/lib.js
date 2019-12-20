@@ -1,4 +1,4 @@
-function WebAuthnProxy(endpoint){
+function WebAuthnProxy(hostName, endpoint){
   result = {};
 
   function getJSON(path)
@@ -46,7 +46,7 @@ function WebAuthnProxy(endpoint){
           { challenge: rawChallenge
           , user: user
           , timeout: 60000
-          , rp: {name: "localhost"}
+          , rp: {name: hostName}
           , pubKeyCredParams:
             [{ type: "public-key"
             , alg: -7

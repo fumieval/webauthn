@@ -51,6 +51,7 @@ Credential =
 Token = String -- Token for authorisation
 Identifier = String -- Human-readable identifier for a Credential
 
+HostName = String
 Endpoint = String -- The prefix of the middleware API e.g. "webauthn"
 User = -- Information stored in the authenticator
   { id : String
@@ -58,7 +59,7 @@ User = -- Information stored in the authenticator
   , displayName : String
   }
 
-WebAuthnProxy : Endpoint ->
+WebAuthnProxy : HostName -> Endpoint ->
   { register : User -> Promise Credential
   -- Register a user to the authenticator and returns a credential if it's valid.
   -- Once verified, insert the Credential to the list of authorisedKeys into the configuraion.
