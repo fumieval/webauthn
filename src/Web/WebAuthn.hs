@@ -43,12 +43,14 @@ import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail
-
 import Web.WebAuthn.Signature
 import Web.WebAuthn.Types
 import qualified Web.WebAuthn.TPM as TPM
 import qualified Web.WebAuthn.FIDOU2F as U2F
 import qualified Web.WebAuthn.Packed as Packed
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
+import Data.Text (pack)
 
 generateChallenge :: Int -> IO Challenge
 generateChallenge len = Challenge <$> getRandomBytes len
@@ -94,48 +96,50 @@ decodeAttestation = do
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (adRaw, stmt)
 
-registerCredential :: Challenge
+registerCredential :: MonadIO m => Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
   -> Bool -- ^ require user verification?
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
-  -> Either VerificationFailure CredentialData
-registerCredential challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = do
-  CollectedClientData{..} <- either
-    (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
-  clientType == Create ?? InvalidType
-  challenge == clientChallenge ?? MismatchedChallenge
-  rpOrigin == clientOrigin ?? MismatchedOrigin
-  case clientTokenBinding of
-    TokenBindingUnsupported -> pure ()
-    TokenBindingSupported -> pure ()
-    TokenBindingPresent t -> case tbi of
-      Nothing -> Left UnexpectedPresenceOfTokenBinding
-      Just t'
-        | t == t' -> pure ()
-        | otherwise -> Left MismatchedTokenBinding
-  (adRaw, stmt) <- either (Left . CBORDecodeError "registerCredential") (pure . snd)
-    $ CBOR.deserialiseFromBytes decodeAttestation
-    $ BL.fromStrict $ attestationObject
-  ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData adRaw
-  let clientDataHash = hash clientDataJSON :: Digest SHA256
-  hash rpId == rpIdHash ad ?? MismatchedRPID
-  userPresent ad ?? UserNotPresent
-  not verificationRequired || userVerified ad ?? UserUnverified
-
-  -- TODO: extensions here
-
+  -> m (Either VerificationFailure CredentialData)
+registerCredential challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = runExceptT $ do
+  (ad, adRaw, stmt) <- hoistEither runAttestationCheck
+    -- TODO: extensions here
   case stmt of
-    AF_FIDO_U2F s -> U2F.verify s ad clientDataHash
-    AF_Packed s -> Packed.verify s ad adRaw clientDataHash
-    AF_TPM s -> TPM.verify s ad adRaw clientDataHash
+    AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
+    AF_Packed s -> hoistEither $ Packed.verify s ad adRaw clientDataHash
+    AF_TPM s -> hoistEither $ TPM.verify s ad adRaw clientDataHash
     AF_None -> pure ()
-    _ -> error $ "registerCredential: unsupported format: " ++ show stmt
+    _ -> throwE (UnsupportedAttestationFormat (pack $ show stmt))
 
   case attestedCredentialData ad of
-    Nothing -> Left MalformedAuthenticatorData
+    Nothing -> throwE MalformedAuthenticatorData
     Just c -> pure c
+  where
+    clientDataHash = hash clientDataJSON :: Digest SHA256
+    runAttestationCheck = do 
+      CollectedClientData{..} <- either
+        (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
+      clientType == Create ?? InvalidType
+      challenge == clientChallenge ?? MismatchedChallenge
+      rpOrigin == clientOrigin ?? MismatchedOrigin
+      case clientTokenBinding of
+        TokenBindingUnsupported -> pure ()
+        TokenBindingSupported -> pure ()
+        TokenBindingPresent t -> case tbi of
+          Nothing -> Left UnexpectedPresenceOfTokenBinding
+          Just t'
+            | t == t' -> pure ()
+            | otherwise -> Left MismatchedTokenBinding
+      (adRaw, stmt) <- either (Left . CBORDecodeError "registerCredential") (pure . snd)
+        $ CBOR.deserialiseFromBytes decodeAttestation
+        $ BL.fromStrict $ attestationObject
+      ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData adRaw
+      hash rpId == rpIdHash ad ?? MismatchedRPID
+      userPresent ad ?? UserNotPresent
+      not verificationRequired || userVerified ad ?? UserUnverified
+      pure (ad, adRaw, stmt)
 
 verify :: Challenge
   -> RelyingParty
@@ -178,3 +182,6 @@ verify challenge RelyingParty{..} tbi verificationRequired clientDataJSON adRaw 
 False ?? e = Left e
 True ?? _ = Right ()
 infix 1 ??
+
+hoistEither :: Monad m => Either e a -> ExceptT e m a
+hoistEither = ExceptT . pure

@@ -14,7 +14,7 @@ author:              Fumiaki Kinoshita
 maintainer:          fumiexcel@gmail.com
 -- copyright:
 -- category:
-extra-source-files:  CHANGELOG.md
+-- extra-source-files:  CHANGELOG.md
 data-files:
   lib.js
 

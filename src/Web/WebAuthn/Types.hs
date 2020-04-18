@@ -22,6 +22,10 @@ module Web.WebAuthn.Types (
   , User(..)
   -- * Exception
   , VerificationFailure(..)
+  , AndroidSafetyNet(..)
+  , StmtSafetyNet(..)
+  , JWTHeader(..)
+  , Base64ByteString(..)
   ) where
 
 import Prelude hiding (fail)
@@ -44,6 +48,7 @@ import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail
 import GHC.Generics (Generic)
+import qualified Data.X509 as X509
 
 newtype Challenge = Challenge { rawChallenge :: ByteString }
   deriving (Show, Eq, Ord, H.Hashable, CBOR.Serialise)
@@ -185,11 +190,39 @@ data VerificationFailure
   | MismatchedRPID
   | UserNotPresent
   | UserUnverified
-  | UnsupportedAttestationFormat
+  | UnsupportedAttestationFormat Text
   | UnsupportedAlgorithm Int
   | MalformedPublicKey
   | MalformedAuthenticatorData
-  | MalformedX509Certificate
+  | MalformedX509Certificate Text
   | MalformedSignature
   | SignatureFailure String
+  | NonceCheckFailure
   deriving Show
+
+data AndroidSafetyNet = AndroidSafetyNet {
+  timestampMs :: Integer
+  , nonce :: [Char]
+  , apkPackageName :: Text
+  , apkCertificateDigestSha256 :: [Text]
+  , ctsProfileMatch :: Bool
+  , basicIntegrity :: Bool
+} deriving (Show, Generic)
+
+instance  FromJSON AndroidSafetyNet
+
+newtype Base64ByteString = Base64ByteString {unBase64ByteString :: ByteString} deriving (Show)
+
+data StmtSafetyNet = StmtSafetyNet {
+  header :: Base64ByteString
+  , payload :: Base64ByteString
+  , signature :: ByteString
+  , certificates :: X509.CertificateChain
+} deriving Show
+
+data JWTHeader = JWTHeader {
+  alg :: Text
+  , x5c :: [Text]
+} deriving (Show, Generic)
+
+instance FromJSON JWTHeader

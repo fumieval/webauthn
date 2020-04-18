@@ -112,7 +112,8 @@ mkMiddleware Config{..} = do
       ["register"] -> do
         body <- lazyRequestBody req
         let (user, cdj, att, challenge) = CBOR.deserialise body
-        case registerCredential challenge theRelyingParty Nothing False cdj att of
+        rg <- registerCredential challenge theRelyingParty Nothing False cdj att
+        case rg of
           Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
           Right cd -> do
             registerKey handler user cd

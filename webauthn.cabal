@@ -14,9 +14,16 @@ author:              Fumiaki Kinoshita
 maintainer:          fumiexcel@gmail.com
 -- copyright:
 category:            Web
-extra-source-files:  CHANGELOG.md
+-- extra-source-files:  CHANGELOG.md
+
+common base-common
+  build-depends:    base == 4.*
+    , x509-store
+    , bytestring
+    , base64-bytestring
 
 library
+  import: base-common
   exposed-modules:
     Web.WebAuthn
     Web.WebAuthn.Types
@@ -24,17 +31,17 @@ library
     Web.WebAuthn.Packed
     Web.WebAuthn.Signature
     Web.WebAuthn.TPM
-  build-depends:       base == 4.*
-    , containers
+  build-depends:
+    containers
     , cryptonite
     , cborg
     , cereal
-    , bytestring
     , hashable
     , aeson
     , asn1-types
     , asn1-encoding
     , text
+    , transformers
     , x509
     , x509-validation
     , memory
@@ -44,3 +51,19 @@ library
   hs-source-dirs:      src
   ghc-options: -Wall
   default-language:    Haskell2010
+
+test-suite test-webauthn
+  import: base-common
+  type: exitcode-stdio-1.0
+  main-is: Tests.hs
+  hs-source-dirs:      test
+  default-language:    Haskell2010
+  default-extensions:
+    QuasiQuotes 
+  build-depends:
+    webauthn
+    , aeson
+    , interpolate
+    , tasty
+    , tasty-hunit
+    , uri-bytestring
