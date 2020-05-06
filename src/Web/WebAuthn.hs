@@ -48,9 +48,11 @@ import Web.WebAuthn.Types
 import qualified Web.WebAuthn.TPM as TPM
 import qualified Web.WebAuthn.FIDOU2F as U2F
 import qualified Web.WebAuthn.Packed as Packed
+import qualified Web.WebAuthn.AndroidSafetyNet as Android
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
 import Data.Text (pack)
+import qualified Data.X509.CertificateStore as X509
 
 generateChallenge :: Int -> IO Challenge
 generateChallenge len = Challenge <$> getRandomBytes len
@@ -78,7 +80,7 @@ parseAuthenticatorData = do
 data AttestationStatement = AF_Packed Packed.Stmt
   | AF_TPM TPM.Stmt
   | AF_AndroidKey
-  | AF_AndroidSafetyNet
+  | AF_AndroidSafetyNet StmtSafetyNet
   | AF_FIDO_U2F U2F.Stmt
   | AF_None
   deriving Show
@@ -92,24 +94,27 @@ decodeAttestation = do
     "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ U2F.decode stmtTerm
     "packed" -> AF_Packed <$> Packed.decode stmtTerm
     "tpm" -> AF_TPM <$> TPM.decode stmtTerm
+    "android-safetynet" -> AF_AndroidSafetyNet <$> Android.decode stmtTerm
     _ -> fail $ "decodeAttestation: Unsupported format: " ++ show fmt
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (adRaw, stmt)
 
-registerCredential :: MonadIO m => Challenge
+registerCredential :: MonadIO m => X509.CertificateStore
+  -> Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
   -> Bool -- ^ require user verification?
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
   -> m (Either VerificationFailure CredentialData)
-registerCredential challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = runExceptT $ do
+registerCredential cs challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = runExceptT $ do
   (ad, adRaw, stmt) <- hoistEither runAttestationCheck
     -- TODO: extensions here
   case stmt of
     AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
     AF_Packed s -> hoistEither $ Packed.verify s ad adRaw clientDataHash
     AF_TPM s -> hoistEither $ TPM.verify s ad adRaw clientDataHash
+    AF_AndroidSafetyNet s -> Android.verify cs s adRaw clientDataHash
     AF_None -> pure ()
     _ -> throwE (UnsupportedAttestationFormat (pack $ show stmt))
 

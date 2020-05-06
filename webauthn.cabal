@@ -31,6 +31,7 @@ library
     Web.WebAuthn.Packed
     Web.WebAuthn.Signature
     Web.WebAuthn.TPM
+    Web.WebAuthn.AndroidSafetyNet
   build-depends:
     containers
     , cryptonite
@@ -59,7 +60,8 @@ test-suite test-webauthn
   hs-source-dirs:      test
   default-language:    Haskell2010
   default-extensions:
-    QuasiQuotes 
+    QuasiQuotes
+    OverloadedStrings
   build-depends:
     webauthn
     , aeson

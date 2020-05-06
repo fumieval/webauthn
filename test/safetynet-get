@@ -1,0 +1,62 @@
+
+
+{
+  "publicKey": {
+    "challenge": "dCCcJkllvbdd-LKDJrCQYbouMEY3FEsNljYis_temyA",
+    "rpId": "psteniusubi.github.io",
+    "allowCredentials": [
+      {
+        "id": "AQJBVPhy4yG7tNUTkedMIgadvfK55s6r3qX_V5jaBOfycETIQLr7zGs_GrMbXGrkJU2BTCDU_uuea4WwBffTv_E",
+        "type": "public-key"
+      }
+    ],
+    "userVerification": "required"
+  }
+}
+
+PublicKeyCredential
+[w3c]
+{
+  "id": "AQJBVPhy4yG7tNUTkedMIgadvfK55s6r3qX_V5jaBOfycETIQLr7zGs_GrMbXGrkJU2BTCDU_uuea4WwBffTv_E",
+  "type": "public-key",
+  "rawId": "AQJBVPhy4yG7tNUTkedMIgadvfK55s6r3qX_V5jaBOfycETIQLr7zGs_GrMbXGrkJU2BTCDU_uuea4WwBffTv_E",
+  "response": {
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiZENDY0prbGx2YmRkLUxLREpyQ1FZYm91TUVZM0ZFc05sallpc190ZW15QSIsIm9yaWdpbiI6Imh0dHBzOlwvXC9wc3Rlbml1c3ViaS5naXRodWIuaW8iLCJhbmRyb2lkUGFja2FnZU5hbWUiOiJjb20uYW5kcm9pZC5jaHJvbWUifQ",
+    "authenticatorData": "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEFAAAAAQ",
+    "signature": "MEQCIFM6aZjT8CefzdAn-QNaa5OcPU24V1SERVocZlus1YT1AiAH_UqNj7xVOW1sDLKkpicTxIONpwfWrWNbo8KL4z5wcA",
+    "userHandle": null
+  }
+}
+clientDataJSON
+[w3c]
+{
+  "type": "webauthn.get",
+  "challenge": "dCCcJkllvbdd-LKDJrCQYbouMEY3FEsNljYis_temyA",
+  "origin": "https://psteniusubi.github.io",
+  "androidPackageName": "com.android.chrome"
+}
+authenticatorData
+[w3c]
+{
+  "rpIdHash": "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVE",
+  "flags": {
+    "value": 5,
+    "up": true,
+    "uv": true,
+    "at": false,
+    "ed": false
+  },
+  "signCount": 1
+}
+credentialPublicKey (from sessionStorage)
+[w3c]
+{
+  "kty": "EC",
+  "alg": "ES256",
+  "crv": "P-256",
+  "x": "ca4oTyEumIkH8am4WBD7h90D_SSj6cRf7ksf3Hhbefo",
+  "y": "-oMb3YR7qrwbGpg9NZA-qQolVmpLqdEtATUWI9FO4To"
+}
+signature
+[w3c]
+true
