@@ -81,8 +81,9 @@ data AttestationStatement = AF_Packed Packed.Stmt
   | AF_None
   deriving Show
 
-decodeAttestation :: CBOR.Decoder s (ByteString, AttestationStatement)
-decodeAttestation = do
+decodeAttestation :: Bool  -- ^ allow no attestation
+                  -> CBOR.Decoder s (ByteString, AttestationStatement)
+decodeAttestation allowNoAttestation = do
   m :: Map.Map Text CBOR.Term <- CBOR.decode
   CBOR.TString fmt <- maybe (fail "fmt") pure $ Map.lookup "fmt" m
   stmtTerm <- maybe (fail "stmt") pure $ Map.lookup "attStmt" m
@@ -90,6 +91,9 @@ decodeAttestation = do
     "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ U2F.decode stmtTerm
     "packed" -> AF_Packed <$> Packed.decode stmtTerm
     "tpm" -> AF_TPM <$> TPM.decode stmtTerm
+    "none" -> if allowNoAttestation 
+                 then pure AF_None 
+                 else fail "decodeAttestation: Attestation is required"
     _ -> fail $ "decodeAttestation: Unsupported format: " ++ show fmt
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (adRaw, stmt)
@@ -116,7 +120,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
         | t == t' -> pure ()
         | otherwise -> Left MismatchedTokenBinding
   (adRaw, stmt) <- either (Left . CBORDecodeError "registerCredential") (pure . snd)
-    $ CBOR.deserialiseFromBytes decodeAttestation
+    $ CBOR.deserialiseFromBytes (decodeAttestation rpAllowNoAttestation)
     $ BL.fromStrict $ attestationObject
   ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData adRaw
   let clientDataHash = hash clientDataJSON :: Digest SHA256
@@ -128,7 +132,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
 
   case stmt of
     AF_FIDO_U2F s -> U2F.verify s ad clientDataHash
-    AF_Packed s -> Packed.verify s ad adRaw clientDataHash
+    AF_Packed s -> Packed.verify s ad adRaw clientDataHash rpAllowSelfAttestation
     AF_TPM s -> TPM.verify s ad adRaw clientDataHash
     AF_None -> pure ()
     _ -> error $ "registerCredential: unsupported format: " ++ show stmt

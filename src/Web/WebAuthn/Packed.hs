@@ -34,8 +34,9 @@ verify :: Stmt
   -> AuthenticatorData
   -> ByteString
   -> Digest SHA256
+  -> Bool
   -> Either VerificationFailure ()
-verify (Stmt _ sig cert) ad adRaw clientDataHash = do
+verify (Stmt _ sig cert) ad adRaw clientDataHash allowSelfAttestation = do
   let dat = adRaw <> BA.convert clientDataHash
   case cert of
     Just x509 -> do
@@ -43,8 +44,11 @@ verify (Stmt _ sig cert) ad adRaw clientDataHash = do
       case X509.verifySignature (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig of
         X509.SignaturePass -> return ()
         X509.SignatureFailed _ -> Left $ SignatureFailure "Packed"
-    Nothing -> do
-      pub <- case attestedCredentialData ad of
-          Nothing -> Left MalformedAuthenticatorData
-          Just c -> parsePublicKey $ credentialPublicKey c
-      verifySig pub sig dat
+    Nothing ->
+        if allowSelfAttestation then do
+          pub <- case attestedCredentialData ad of
+              Nothing -> Left MalformedAuthenticatorData
+              Just c -> parsePublicKey $ credentialPublicKey c
+          verifySig pub sig dat
+        else
+          Left UnsupportedAttestationFormat 
