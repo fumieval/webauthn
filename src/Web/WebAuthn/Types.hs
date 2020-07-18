@@ -276,7 +276,10 @@ data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
 } deriving (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialDescriptor where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
+
+mapTipe :: String -> String
+mapTipe str = if str == "tipe" then "type" else str 
 
 data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
   challenge :: Base64ByteString
