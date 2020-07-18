@@ -26,29 +26,58 @@ module Web.WebAuthn.Types (
   , StmtSafetyNet(..)
   , JWTHeader(..)
   , Base64ByteString(..)
+  , PublicKeyCredentialRequestOptions(..)
+  , PublicKeyCredentialDescriptor(..)
+  , AuthenticatorTransport(..)
+  , PublicKeyCredentialType(..)
   ) where
 
 import Prelude hiding (fail)
 import Data.Aeson as J
+    (Value(..),  
+      (.:),
+      (.:?),
+      withObject,
+      withText,
+      constructorTagModifier,
+      FromJSON(..),
+      ToJSON(..),
+      Options(..) )
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
-import Data.ByteString.Base16 as Base16
+import Data.ByteString.Base16 as Base16 (decodeLenient, encode )
 import qualified Data.Hashable as H
 import qualified Data.Map as Map
 import Data.Text (Text)
-import Data.Text.Encoding
+import Data.Text.Encoding ( decodeUtf8, encodeUtf8 )
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
-import Crypto.Hash
-import Crypto.Hash.Algorithms (SHA256(..))
+import Crypto.Hash ( SHA256, Digest )
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.Serialise as CBOR
-import Control.Monad.Fail
+import Control.Monad.Fail ( MonadFail(fail) )
 import GHC.Generics (Generic)
 import qualified Data.X509 as X509
+import Data.Aeson.Types (typeMismatch)
+import Data.Aeson (genericToEncoding)
+import Data.Aeson (defaultOptions)
+import Data.Char ( toLower )
+
+newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq)
+
+instance ToJSON Base64ByteString where
+  toJSON (Base64ByteString bs) = String $ decodeUtf8 $ Base64.encode bs
+
+instance FromJSON Base64ByteString where
+  parseJSON s@(String v) = do
+    eth <- pure $ Base64.decode (encodeUtf8 v)
+    case eth of
+      Left err -> typeMismatch ("Base64: " <> err) s
+      Right str -> pure (Base64ByteString str)
+  parseJSON oth = typeMismatch "Expecting String" oth
 
 newtype Challenge = Challenge { rawChallenge :: ByteString }
   deriving (Show, Eq, Ord, H.Hashable, CBOR.Serialise)
@@ -71,7 +100,7 @@ instance FromJSON CollectedClientData where
     <$> obj .: "type"
     <*> obj .: "challenge"
     <*> obj .: "origin"
-    <*> fmap (maybe TokenBindingUnsupported id) (obj .:? "tokenBinding")
+    <*> fmap (maybe TokenBindingUnsupported Prelude.id) (obj .:? "tokenBinding")
 
 data TokenBinding = TokenBindingUnsupported
   | TokenBindingSupported
@@ -149,7 +178,7 @@ instance ToJSON CredentialPublicKey where
 newtype AAGUID = AAGUID { unAAGUID :: ByteString } deriving (Show, Eq)
 
 instance FromJSON AAGUID where
-  parseJSON v = AAGUID . fst . Base16.decode . T.encodeUtf8 <$> parseJSON v
+  parseJSON v = AAGUID . Base16.decodeLenient . T.encodeUtf8 <$> parseJSON v
 
 instance ToJSON AAGUID where
   toJSON = toJSON . T.decodeUtf8 . Base16.encode . unAAGUID
@@ -211,8 +240,6 @@ data AndroidSafetyNet = AndroidSafetyNet {
 
 instance  FromJSON AndroidSafetyNet
 
-newtype Base64ByteString = Base64ByteString {unBase64ByteString :: ByteString} deriving (Show)
-
 data StmtSafetyNet = StmtSafetyNet {
   header :: Base64ByteString
   , payload :: Base64ByteString
@@ -226,3 +253,37 @@ data JWTHeader = JWTHeader {
 } deriving (Show, Generic)
 
 instance FromJSON JWTHeader
+
+
+data PublicKeyCredentialType = PublicKey deriving (Eq, Show)
+
+instance ToJSON PublicKeyCredentialType where
+  toJSON PublicKey = String "public-key"
+
+data AuthenticatorTransport = USB -- usb
+    | NFC -- nfc
+    | BLE -- ble
+    | Internal -- internal
+  deriving (Eq, Show, Generic)
+
+instance ToJSON AuthenticatorTransport where
+  toEncoding = genericToEncoding defaultOptions { constructorTagModifier = fmap toLower }
+
+data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
+  tipe :: PublicKeyCredentialType
+  , id :: Base64ByteString
+  , transports :: [AuthenticatorTransport]
+} deriving (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialDescriptor where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+
+data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
+  challenge :: Base64ByteString
+  , timeout :: Maybe Integer
+  , rpId :: Maybe Text
+  , allowCredentials :: Maybe PublicKeyCredentialDescriptor
+} deriving (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialRequestOptions where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}

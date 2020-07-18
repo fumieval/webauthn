@@ -209,7 +209,7 @@ verifyClientTokenBinding _ _ = pure ()
 verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
 verifyAuthenticatorData rp adRaw verificationRequired = do
   ad <- first (const MalformedAuthenticatorData) (C.runGet parseAuthenticatorData adRaw)
-  hash (rpId rp) == rpIdHash ad ?? MismatchedRPID
+  hash (rpId (rp :: RelyingParty)) == rpIdHash ad ?? MismatchedRPID
   userPresent ad ?? UserNotPresent
   not verificationRequired || userVerified ad ?? UserUnverified
   pure ad

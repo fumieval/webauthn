@@ -1,13 +1,20 @@
 import Web.WebAuthn
-import Test.Tasty
-import Test.Tasty.HUnit
-import Data.String.Interpolate
-import Data.ByteString.Base64.URL as BS (decodeLenient, decode)
+    ( CredentialData(credentialPublicKey),
+      RelyingParty,
+      Origin(Origin),
+      Challenge(Challenge),
+      defaultRelyingParty,
+      registerCredential,
+      verify )
+import Test.Tasty ( defaultMain, testGroup, TestTree )
+import Test.Tasty.HUnit ( assertBool, testCaseSteps )
+import Data.String.Interpolate ()
+import Data.ByteString.Base64.URL as BS (decodeLenient)
 import Data.Aeson as A (eitherDecode, FromJSON)
-import URI.ByteString
-import Data.X509.CertificateStore
-import Data.ByteString
-import Data.Either
+import URI.ByteString ()
+import Data.X509.CertificateStore ( readCertificateStore )
+import Data.ByteString ( ByteString )
+import Data.Either ( isRight )
 import qualified Data.ByteString.Lazy as BL
 
 main :: IO ()
@@ -16,14 +23,16 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Tests" [androidTests]
 
+androidTests :: TestTree
 androidTests = testGroup "WebAuthn Tests" 
   [
     androidCredentialTest
   ]
 
+androidCredentialTest :: TestTree
 androidCredentialTest = testCaseSteps "Android Test" $ \step -> do
   step "Registeration check..."
-  Just k <- readCertificateStore "test\\cacert.pem"
+  Just k <- readCertificateStore "test/cacert.pem"
   eth <- registerCredential k androidChallenge defRp Nothing False androidClientDataJSON androidAttestationObject
   assertBool (show eth) (isRight eth)
   let Right cdata = eth

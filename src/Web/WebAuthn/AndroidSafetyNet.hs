@@ -22,7 +22,6 @@ import qualified Data.ByteString.Base64.URL as Base64URL
 import qualified Data.X509 as X509
 import qualified Data.X509.Validation as X509
 import qualified Data.X509.CertificateStore as X509
-import Control.Monad.Fail (MonadFail)
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (SHA256(..))
 import Control.Monad.IO.Class (MonadIO, liftIO)
