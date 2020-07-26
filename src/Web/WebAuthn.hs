@@ -38,7 +38,6 @@ import qualified Data.Map as Map
 import Data.Text (Text)
 import Crypto.Random
 import Crypto.Hash
-import Crypto.Hash.Algorithms (SHA256(..))
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.CBOR.Decoding as CBOR

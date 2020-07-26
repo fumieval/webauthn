@@ -62,8 +62,7 @@ import Control.Monad.Fail ( MonadFail(fail) )
 import GHC.Generics (Generic)
 import qualified Data.X509 as X509
 import Data.Aeson.Types (typeMismatch)
-import Data.Aeson (genericToEncoding)
-import Data.Aeson (defaultOptions)
+import Data.Aeson (genericToEncoding, defaultOptions)
 import Data.Char ( toLower )
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq)
@@ -125,7 +124,13 @@ data Origin = Origin
   , originHost :: Text
   , originPort :: Maybe Int
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance ToJSON Origin where
+  toJSON origin = String (originScheme origin <> "://" <> originHost origin <> (port $ originPort origin))
+    where
+      port (Just int) = ":" <> (T.pack $ show int)
+      port Nothing = ""
 
 data RelyingParty = RelyingParty
   { rpOrigin :: Origin
