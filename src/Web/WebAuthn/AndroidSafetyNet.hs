@@ -26,9 +26,11 @@ import Control.Monad.Fail (MonadFail)
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (SHA256(..))
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Except (ExceptT(..), runExceptT, throwE)
+import Control.Monad.Trans.Except (ExceptT(..), throwE)
 import Data.Char (ord)
 import Data.Bifunctor (first)
+import Web.WebAuthn.Signature (verifyX509Sig)
+import Control.Error.Util (hoistEither, failWith)
 
 decode :: CBOR.Term -> CBOR.Decoder s StmtSafetyNet
 decode (CBOR.TMap xs) = do
@@ -73,17 +75,11 @@ verify cs sf authDataRaw clientDataHash = do
         es -> throwE (MalformedX509Certificate (pack $ show es))
       cert <- failWith MalformedPublicKey (signCert $ certificates sf)
       let pub = X509.certPubKey $ X509.getCertificate cert
-      case X509.verifySignature rs256 pub dat (signature sf) of
-            X509.SignaturePass -> pure ()
-            X509.SignatureFailed e -> throwE (SignatureFailure ("AndroidSafetyNet " <> show e))
+      hoistEither $ verifyX509Sig rs256 pub dat (signature sf) "AndroidSafetyNet"
     signCert (X509.CertificateChain cschain) = headMay cschain
 
 rs256 :: X509.SignatureALG
 rs256 = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA  
-
-failWith :: Monad m => e -> Maybe a -> ExceptT e m a
-failWith _ (Just a) = pure a
-failWith e Nothing = throwE e
 
 headMay :: [a] -> Maybe a
 headMay [] = Nothing

@@ -11,8 +11,8 @@ import qualified Codec.Serialise as CBOR
 import qualified Data.ByteArray as BA
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
-import qualified Data.X509.Validation as X509
 import Web.WebAuthn.Types
+import Web.WebAuthn.Signature (verifyX509Sig)
 
 data Stmt = Stmt (X509.SignedExact X509.Certificate) ByteString
   deriving Show
@@ -45,6 +45,4 @@ verify (Stmt cert sig) AuthenticatorData{..} clientDataHash = do
         , BB.byteString $ unCredentialId credentialId
         , pubU2F]
   let pub = X509.certPubKey $ X509.getCertificate cert
-  case X509.verifySignature (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig of
-    X509.SignaturePass -> return ()
-    X509.SignatureFailed _ -> Left $ SignatureFailure "FIDOU2F"
+  verifyX509Sig (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig "FIDOU2F"

@@ -2,6 +2,7 @@
 module Web.WebAuthn.Signature (PublicKey(..)
   , parsePublicKey
   , verifySig
+  , verifyX509Sig
   ) where
 
 import Control.Monad
@@ -21,6 +22,8 @@ import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import Data.ASN1.Types
 import Web.WebAuthn.Types
+import qualified Data.X509 as X509
+import qualified Data.X509.Validation as X509
 
 data PublicKey = PubEC EC.PublicKey | PubRSA RSA.PublicKey
 
@@ -87,3 +90,8 @@ unpad packed
                               , z == "\NUL"
                               , B.length ps >= 8
                               ]
+
+verifyX509Sig :: X509.SignatureALG -> X509.PubKey -> B.ByteString -> B.ByteString -> [Char] -> Either VerificationFailure ()
+verifyX509Sig sigType pub dat sig msg = case X509.verifySignature sigType pub dat sig of
+  X509.SignaturePass -> pure ()
+  X509.SignatureFailed e -> Left (SignatureFailure (msg <> " " <> show e))

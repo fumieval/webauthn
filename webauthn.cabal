@@ -3,24 +3,27 @@ cabal-version:       2.4
 --   For further documentation, see http://haskell.org/cabal/users-guide/
 
 name:                webauthn
-version:             0
+version:             0.0.1
 synopsis:            Web Authentication API
 -- description:
 homepage:            https://github.com/fumieval/webauthn
 -- bug-reports:
 license:             BSD-3-Clause
 license-file:        LICENSE
-author:              Fumiaki Kinoshita
+authors:             Fumiaki Kinoshita, Sumit Raja <sumitraja@gmail.com>
 maintainer:          fumiexcel@gmail.com
 -- copyright:
 category:            Web
 -- extra-source-files:  CHANGELOG.md
 
 common base-common
-  build-depends:    base == 4.*
+  build-depends: 
+    base == 4.*
     , x509-store
     , bytestring
     , base64-bytestring
+    , errors
+    , aeson
 
 library
   import: base-common
@@ -64,7 +67,6 @@ test-suite test-webauthn
     OverloadedStrings
   build-depends:
     webauthn
-    , aeson
     , interpolate
     , tasty
     , tasty-hunit
