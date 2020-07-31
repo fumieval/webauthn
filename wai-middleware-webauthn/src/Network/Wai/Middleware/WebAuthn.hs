@@ -34,6 +34,7 @@ import GHC.Clock
 import Network.HTTP.Types
 import Paths_wai_middleware_webauthn
 import qualified Codec.Serialise as CBOR
+import qualified Data.X509.CertificateStore as X509
 
 newtype Identifier = Identifier { unIdentifier :: Text }
   deriving (Show, Eq, Ord, J.FromJSON, J.ToJSON, J.FromJSONKey, J.ToJSONKey, Hashable)
@@ -63,6 +64,7 @@ data Config a = Config
   , endpoint :: !Text
   , origin :: !Origin
   , timeout :: !Double
+  , certStore :: !Text
   } deriving (Functor, Generic)
 instance J.FromJSON a => J.FromJSON (Config a)
 
@@ -72,6 +74,7 @@ defaultConfig a = Config
   , endpoint = "webauthn"
   , origin = Origin "https" "localhost" (Just 8080)
   , timeout = 86400
+  , certStore = "cacert.pem"
   }
 
 requestIdentifier :: Request -> Maybe Identifier
@@ -94,6 +97,8 @@ mkMiddleware :: Config Handler -> IO Middleware
 mkMiddleware Config{..} = do
   vTokens <- newIORef HM.empty
   libJSPath <- getDataFileName "lib.js"
+  cspath <- (getDataFileName "cacert.pem")
+  Just cs <- X509.readCertificateStore cspath
   let theRelyingParty = W.defaultRelyingParty origin
 
   _ <- forkIO $ forever $ do
@@ -112,7 +117,7 @@ mkMiddleware Config{..} = do
       ["register"] -> do
         body <- lazyRequestBody req
         let (user, cdj, att, challenge) = CBOR.deserialise body
-        rg <- registerCredential challenge theRelyingParty Nothing False cdj att
+        rg <- W.registerCredential cs challenge theRelyingParty Nothing False cdj att
         case rg of
           Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
           Right cd -> do
