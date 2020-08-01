@@ -55,6 +55,7 @@ import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
 import Data.Text (pack)
 import qualified Data.X509.CertificateStore as X509
 import Data.Bifunctor (first)
+import Data.Text.Encoding (encodeUtf8)
 
 generateChallenge :: Int -> IO Challenge
 generateChallenge len = Challenge <$> getRandomBytes len
@@ -130,7 +131,7 @@ registerCredential :: MonadIO m => X509.CertificateStore
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
   -> m (Either VerificationFailure CredentialData)
-registerCredential cs challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObjectBS = runExceptT $ do
+registerCredential cs challenge (RelyingParty rpOrigin rpId _ _) tbi verificationRequired clientDataJSON attestationObjectBS = runExceptT $ do
   _ <- hoistEither runAttestationCheck
   attestationObject <- hoistEither $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
         $ CBOR.deserialiseFromBytes decodeAttestation
@@ -167,7 +168,7 @@ registerCredential cs challenge RelyingParty{..} tbi verificationRequired client
             | otherwise -> Left MismatchedTokenBinding
     extractAuthData attestationObject = do
       ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData (authData attestationObject)
-      hash rpId == rpIdHash ad ?? MismatchedRPID
+      hash (encodeUtf8 rpId) == rpIdHash ad ?? MismatchedRPID
       userPresent ad ?? UserNotPresent
       not verificationRequired || userVerified ad ?? UserUnverified
       pure ad
@@ -208,7 +209,7 @@ verifyClientTokenBinding _ _ = pure ()
 verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
 verifyAuthenticatorData rp adRaw verificationRequired = do
   ad <- first (const MalformedAuthenticatorData) (C.runGet parseAuthenticatorData adRaw)
-  hash (rpId (rp :: RelyingParty)) == rpIdHash ad ?? MismatchedRPID
+  hash (encodeUtf8 $ rpId (rp :: RelyingParty)) == rpIdHash ad ?? MismatchedRPID
   userPresent ad ?? UserNotPresent
   not verificationRequired || userVerified ad ?? UserUnverified
   pure ad

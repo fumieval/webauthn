@@ -1,21 +1,32 @@
 import Web.WebAuthn
-    ( CredentialData(credentialPublicKey),
-      RelyingParty,
-      Origin(Origin),
-      Challenge(Challenge),
-      defaultRelyingParty,
-      registerCredential,
+    ( registerCredential,
       verify )
 import Test.Tasty ( defaultMain, testGroup, TestTree )
-import Test.Tasty.HUnit ( assertBool, testCaseSteps )
+import Test.Tasty.HUnit (assertEqual,  assertBool, testCaseSteps )
 import Data.String.Interpolate ()
 import Data.ByteString.Base64.URL as BS (decodeLenient)
-import Data.Aeson as A (eitherDecode, FromJSON)
+import Data.Aeson as A (toJSON, eitherDecode, FromJSON)
 import URI.ByteString ()
 import Data.X509.CertificateStore ( readCertificateStore )
 import Data.ByteString ( ByteString )
 import Data.Either ( isRight )
 import qualified Data.ByteString.Lazy as BL
+import Web.WebAuthn.Types
+    ( PublicKeyCredentialCreationOptions(PublicKeyCredentialCreationOptions),
+      PubKeyCredParam(PubKeyCredParam),
+      PubKeyCredAlg(ES256),
+      PublicKeyCredentialDescriptor(PublicKeyCredentialDescriptor),
+      AuthenticatorTransport(BLE),
+      PublicKeyCredentialType(PublicKey),
+      User(User),
+      CredentialData(credentialPublicKey),
+      RelyingParty,
+      Origin(Origin),
+      Challenge(Challenge),
+      Base64ByteString(Base64ByteString),
+      defaultRelyingParty )
+import Data.Aeson.QQ.Simple ( aesonQQ )
+import Data.List.NonEmpty ( NonEmpty((:|)) )
 
 main :: IO ()
 main = defaultMain tests
@@ -40,11 +51,31 @@ androidCredentialTest = testCaseSteps "Android Test" $ \step -> do
   let eth = verify androidGetChallenge defRp Nothing False androidGetClientDataJSON androidGetAuthenticatorData androidGetSignature (credentialPublicKey cdata)
   assertBool (show eth) (isRight eth)  
 
+registrationTest :: TestTree
+registrationTest = testCaseSteps "Credentials Test" $ \step -> do
+  step "Credential creation"
+  let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing)) (Base64ByteString "12343434") (User (Base64ByteString "id") Nothing Nothing) (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
+  let ref = [aesonQQ| {
+    "rp":{"id":"matrixpay.biz"},
+    "challenge":"MTIzNDM0MzQ=",
+    "user":{"id":"aWQ="},
+    "pubKeyCredParams":[
+      {
+        "type":"public-key",
+        "alg":-7
+      }],
+    "excludeCredentials":[
+      {"type":"public-key", "id": "MTIzNA==", "transports ":["ble"]}
+      ]
+    }
+  |]
+  assertEqual "TOJSON not equal" ref (toJSON pkcco)
+
 defRp :: RelyingParty
-defRp = defaultRelyingParty  $ (Origin "https" "psteniusubi.github.io" Nothing)
+defRp = defaultRelyingParty  (Origin "https" "psteniusubi.github.io" Nothing)
 
 decodePanic :: FromJSON a => ByteString -> a
-decodePanic s = either (error) id (A.eitherDecode (BL.fromStrict s))
+decodePanic s = either error Prelude.id (A.eitherDecode (BL.fromStrict s))
 
 androidClientDataJSON :: ByteString
 androidClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWkIyQVJraDZ3RVBoZkdjSFBRWWpWNXNidmxoa3liVlN1ZFQ4Q0VzNTBsNCIsIm9yaWdpbiI6Imh0dHBzOlwvXC9wc3Rlbml1c3ViaS5naXRodWIuaW8iLCJhbmRyb2lkUGFja2FnZU5hbWUiOiJjb20uYW5kcm9pZC5jaHJvbWUifQ"

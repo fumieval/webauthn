@@ -35,18 +35,18 @@ decode :: CBOR.Term -> CBOR.Decoder s StmtSafetyNet
 decode (CBOR.TMap xs) = do
   let m = Map.fromList xs
   let CBOR.TBytes response = fromMaybe (CBOR.TString "response") (Map.lookup (CBOR.TString "response") m)
-  case (B.split (fromIntegral . ord $ '.') response) of 
+  case B.split (fromIntegral . ord $ '.') response of 
     (h : p : s : _) -> StmtSafetyNet (Base64ByteString h) (Base64ByteString p) (Base64URL.decodeLenient s) <$> getCertificateChain h
-    _ -> fail ("decodeSafetyNet: response was not a JWT")
+    _ -> fail "decodeSafetyNet: response was not a JWT"
 decode _ = fail "decodeSafetyNet: expected a Map"
 
 getCertificateChain :: MonadFail m => ByteString -> m X509.CertificateChain
 getCertificateChain h = do
   let bs = BL.fromStrict $ Base64URL.decodeLenient h
-  case (J.eitherDecode bs) of
-    Left e -> fail ("android-safetynet: Response header decode failed: " <> (show e))
+  case J.eitherDecode bs of
+    Left e -> fail ("android-safetynet: Response header decode failed: " <> show e)
     Right jth -> do
-      if (alg jth) /= "RS256" then fail ("android-safetynet: Unknown signature alg " <> (show $ alg jth)) else do
+      if alg (jth ::JWTHeader) /= "RS256" then fail ("android-safetynet: Unknown signature alg " <> show (alg (jth :: JWTHeader))) else do
         let x5cbs = Base64.decodeLenient . encodeUtf8 <$> x5c jth
         case X509.decodeCertificateChain (X509.CertificateChainRaw x5cbs) of
           Left e -> fail ("Certificate chain decode failed: " <> show e)
@@ -62,12 +62,12 @@ verify cs sf authDataRaw clientDataHash = do
   let dat = authDataRaw <> BA.convert clientDataHash
   as <- extractAndroidSafetyNet
   let nonceCheck = Base64.encode (BA.convert (hash dat :: Digest SHA256))
-  if nonceCheck /= (BL.toStrict $ BL.pack (nonce as)) then throwE NonceCheckFailure else pure ()
+  if nonceCheck /= BL.toStrict (BL.pack (nonce as)) then throwE NonceCheckFailure else pure ()
   where
     extractAndroidSafetyNet = ExceptT $ pure $ first JSONDecodeError 
       $ J.eitherDecode (BL.fromStrict . Base64URL.decodeLenient . unBase64ByteString $ payload sf)
     verifyJWS = do
-      let dat = (unBase64ByteString $ header sf) <> "." <> (unBase64ByteString $ payload sf)
+      let dat = unBase64ByteString (header sf) <> "." <> unBase64ByteString (payload sf)
       res <- liftIO $ X509.validateDefault cs (X509.exceptionValidationCache []) ("attest.android.com", "") (certificates sf)
       case res of
         [] -> pure ()

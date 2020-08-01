@@ -30,6 +30,12 @@ module Web.WebAuthn.Types (
   , PublicKeyCredentialDescriptor(..)
   , AuthenticatorTransport(..)
   , PublicKeyCredentialType(..)
+  , PublicKeyCredentialCreationOptions(..)
+  , PubKeyCredParam (..)
+  , Attestation (..)
+  , Extensions (..)
+  , AuthenticatorSelection (..)
+  , PubKeyCredAlg (..)
   ) where
 
 import Prelude hiding (fail)
@@ -42,9 +48,13 @@ import Data.Aeson as J
       constructorTagModifier,
       FromJSON(..),
       ToJSON(..),
-      Options(..) )
+      Options(..)
+      , genericToEncoding
+      , defaultOptions
+      , object
+      , (.=)
+    )
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import Data.ByteString.Base16 as Base16 (decodeLenient, encode )
 import qualified Data.Hashable as H
@@ -61,18 +71,20 @@ import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail ( MonadFail(fail) )
 import GHC.Generics (Generic)
 import qualified Data.X509 as X509
-import Data.Aeson.Types (typeMismatch)
-import Data.Aeson (genericToEncoding, defaultOptions)
-import Data.Char ( toLower )
+import Data.Aeson.Types (Pair, typeMismatch)
+import Data.Char ( toLower, toUpper )
+import Data.ByteArray (ByteArrayAccess)
+import Data.Aeson (SumEncoding(UntaggedValue))
+import Data.List.NonEmpty
 
-newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq)
+newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
 instance ToJSON Base64ByteString where
   toJSON (Base64ByteString bs) = String $ decodeUtf8 $ Base64.encode bs
 
 instance FromJSON Base64ByteString where
   parseJSON s@(String v) = do
-    eth <- pure $ Base64.decode (encodeUtf8 v)
+    let eth = Base64.decode (encodeUtf8 v)
     case eth of
       Left err -> typeMismatch ("Base64: " <> err) s
       Right str -> pure (Base64ByteString str)
@@ -129,19 +141,29 @@ data Origin = Origin
 instance ToJSON Origin where
   toJSON origin = String (originScheme origin <> "://" <> originHost origin <> (port $ originPort origin))
     where
-      port (Just int) = ":" <> (T.pack $ show int)
+      port (Just int) = ":" <> T.pack (show int)
       port Nothing = ""
 
 data RelyingParty = RelyingParty
   { rpOrigin :: Origin
-  , rpId :: ByteString
-  , rpAllowSelfAttestation :: Bool
-  , rpAllowNoAttestation :: Bool
+  , rpId :: Text
+  , icon :: Maybe Base64ByteString
+  , name :: Maybe Base64ByteString
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON RelyingParty where
+  toJSON rpo = object (["id" .= toJSON (rpId (rpo :: RelyingParty))] 
+    <> maybeToPair "icon" (icon rpo)
+    <> maybeToPair "name" (name (rpo :: RelyingParty)))
+
+maybeToPair :: Text -> Maybe Base64ByteString -> [Pair]
+maybeToPair _ Nothing = []
+maybeToPair lbl (Just bs) = [lbl .= toJSON bs]
+
 
 defaultRelyingParty :: Origin -> RelyingParty
-defaultRelyingParty orig = RelyingParty orig (encodeUtf8 $ originHost orig) False False
+defaultRelyingParty orig = RelyingParty orig (originHost orig) Nothing Nothing
 
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
@@ -198,20 +220,31 @@ instance J.FromJSON CredentialData
 instance J.ToJSON CredentialData
 
 data User = User
-  { userId :: B.ByteString
-  , userName :: T.Text
-  , userDisplayName :: T.Text
+  { id :: Base64ByteString
+  , name :: Maybe T.Text
+  , displayName :: Maybe T.Text
   } deriving (Generic, Show, Eq)
+
+instance ToJSON User where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
 
 instance CBOR.Serialise User where
   encode (User i n d) = CBOR.encode $ Map.fromList
-    [("id" :: Text, CBOR.TBytes i), ("name", CBOR.TString n), ("displayName", CBOR.TString d)]
+    ([("id" :: Text, CBOR.TBytes (unBase64ByteString i))] <> maybeToCBORString "name" n <> maybeToCBORString "displayName" d)
   decode = do
     m <- CBOR.decode
     CBOR.TBytes i <- maybe (fail "id") pure $ Map.lookup ("id" :: Text) m
-    CBOR.TString n <- maybe (fail "name") pure $ Map.lookup "name" m
-    CBOR.TString d <- maybe (fail "displayName") pure $ Map.lookup "displayName" m
-    return $ User i n d
+    let mayn = Map.lookup "name" m
+    let mayd = Map.lookup "displayName" m
+    return $ User (Base64ByteString i) (maybeCBORTStringToText mayn) (maybeCBORTStringToText mayd)
+
+maybeCBORTStringToText :: Maybe CBOR.Term -> Maybe Text
+maybeCBORTStringToText (Just (CBOR.TString txt)) = Just txt
+maybeCBORTStringToText _ = Nothing
+
+maybeToCBORString :: Text -> Maybe Text -> [(Text, CBOR.Term)]
+maybeToCBORString _ Nothing = []
+maybeToCBORString lbl (Just txt) = [(lbl, CBOR.TString txt)]
 
 data VerificationFailure
   = InvalidType
@@ -259,7 +292,6 @@ data JWTHeader = JWTHeader {
 
 instance FromJSON JWTHeader
 
-
 data PublicKeyCredentialType = PublicKey deriving (Eq, Show)
 
 instance ToJSON PublicKeyCredentialType where
@@ -272,12 +304,12 @@ data AuthenticatorTransport = USB -- usb
   deriving (Eq, Show, Generic)
 
 instance ToJSON AuthenticatorTransport where
-  toEncoding = genericToEncoding defaultOptions { constructorTagModifier = fmap toLower }
+  toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
   tipe :: PublicKeyCredentialType
   , id :: Base64ByteString
-  , transports :: [AuthenticatorTransport]
+  , transports :: Maybe (NonEmpty AuthenticatorTransport)
 } deriving (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialDescriptor where
@@ -286,12 +318,98 @@ instance ToJSON PublicKeyCredentialDescriptor where
 mapTipe :: String -> String
 mapTipe str = if str == "tipe" then "type" else str 
 
+data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, Generic)
+
+instance ToJSON UserVerification where
+  toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
+
 data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
   challenge :: Base64ByteString
   , timeout :: Maybe Integer
   , rpId :: Maybe Text
-  , allowCredentials :: Maybe PublicKeyCredentialDescriptor
+  , allowCredentials ::Maybe (NonEmpty PublicKeyCredentialDescriptor)
+  , userVerification :: Maybe UserVerification
+  -- extensions omitted as support is minimal https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialRequestOptions/extensions
 } deriving (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialRequestOptions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+
+data PubKeyCredAlg = ES256 -- -7 
+  | RS256 -- (-257) 
+  | PS256 -- (-37)
+  deriving (Show, Eq)
+
+instance ToJSON PubKeyCredAlg where
+  toJSON ES256 = Number (-7)
+  toJSON RS256 = Number (-257)
+  toJSON PS256 = Number (-37)
+  
+data PubKeyCredParam = PubKeyCredParam {
+  tipe :: PublicKeyCredentialType
+  , alg :: PubKeyCredAlg
+} deriving (Show, Eq, Generic)
+
+instance ToJSON PubKeyCredParam where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
+
+data Attestation = None | Direct | Indirect deriving (Eq, Show, Generic)
+
+instance ToJSON Attestation where
+  toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap  toLower }
+
+newtype AuthnSel = AuthnSel [Base64ByteString] deriving (Show, Eq, Generic)
+
+instance ToJSON AuthnSel where
+  toEncoding = genericToEncoding defaultOptions { unwrapUnaryRecords = True }
+
+data BiometricPerfBounds = BiometricPerfBounds {
+  far :: Double
+  , frr :: Double
+} deriving (Show, Eq, Generic)
+
+instance ToJSON BiometricPerfBounds where
+  toEncoding = genericToEncoding defaultOptions { fieldLabelModifier = fmap toUpper }
+
+data Extensions = Extensions {
+  uvi :: Bool
+  , loc :: Bool
+  , uvm :: Bool
+  , exts :: Bool
+  , authnSel :: Maybe AuthnSel
+  , biometricPerfBounds :: Maybe BiometricPerfBounds
+} deriving (Show, Eq, Generic)
+
+instance ToJSON Extensions where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+
+data AuthenticatorAttachment = Platform | CrossPlatform deriving (Eq, Show)
+
+instance ToJSON AuthenticatorAttachment where
+  toJSON Platform = String "platform"
+  toJSON CrossPlatform = String "cross-platform" 
+
+data AuthenticatorSelection = AuthenticatorSelection {
+  authenticatorAttachment :: Maybe AuthenticatorAttachment
+  , requireResidentKey :: Maybe Bool
+  , userVerification :: Maybe UserVerification
+} deriving (Show, Eq, Generic)
+
+instance ToJSON AuthenticatorSelection where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+
+data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions {
+  rp :: RelyingParty
+  , challenge :: Base64ByteString
+  , user :: User
+  , pubKeyCredParams :: NonEmpty PubKeyCredParam
+  , timeout :: Maybe Integer
+  , attestation :: Maybe Attestation
+  , extensions :: Maybe Extensions
+  , authenticatorSelection :: Maybe AuthenticatorSelection
+  , excludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
+} deriving (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialCreationOptions where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+
