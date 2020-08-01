@@ -35,6 +35,7 @@ module Web.WebAuthn.Types (
   , Attestation (..)
   , Extensions (..)
   , AuthenticatorSelection (..)
+  , UserVerification (..)
   , PubKeyCredAlg (..)
   ) where
 
@@ -76,6 +77,7 @@ import Data.Char ( toLower, toUpper )
 import Data.ByteArray (ByteArrayAccess)
 import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.List.NonEmpty
+import Data.Aeson (genericToJSON)
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -217,6 +219,7 @@ data CredentialData = CredentialData
   } deriving (Show, Eq, Generic)
 
 instance J.FromJSON CredentialData
+
 instance J.ToJSON CredentialData
 
 data User = User
@@ -226,6 +229,7 @@ data User = User
   } deriving (Generic, Show, Eq)
 
 instance ToJSON User where
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True}
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
 
 instance CBOR.Serialise User where
@@ -305,6 +309,7 @@ data AuthenticatorTransport = USB -- usb
 
 instance ToJSON AuthenticatorTransport where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
+  toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
   tipe :: PublicKeyCredentialType
@@ -314,6 +319,7 @@ data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
 
 instance ToJSON PublicKeyCredentialDescriptor where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
 
 mapTipe :: String -> String
 mapTipe str = if str == "tipe" then "type" else str 
@@ -322,6 +328,7 @@ data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, G
 
 instance ToJSON UserVerification where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
+  toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
   challenge :: Base64ByteString
@@ -334,6 +341,7 @@ data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
 
 instance ToJSON PublicKeyCredentialRequestOptions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True}
 
 data PubKeyCredAlg = ES256 -- -7 
   | RS256 -- (-257) 
@@ -352,16 +360,19 @@ data PubKeyCredParam = PubKeyCredParam {
 
 instance ToJSON PubKeyCredParam where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
 
 data Attestation = None | Direct | Indirect deriving (Eq, Show, Generic)
 
 instance ToJSON Attestation where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap  toLower }
+  toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap  toLower }
 
 newtype AuthnSel = AuthnSel [Base64ByteString] deriving (Show, Eq, Generic)
 
 instance ToJSON AuthnSel where
   toEncoding = genericToEncoding defaultOptions { unwrapUnaryRecords = True }
+  toJSON = genericToJSON defaultOptions { unwrapUnaryRecords = True }
 
 data BiometricPerfBounds = BiometricPerfBounds {
   far :: Double
@@ -370,6 +381,7 @@ data BiometricPerfBounds = BiometricPerfBounds {
 
 instance ToJSON BiometricPerfBounds where
   toEncoding = genericToEncoding defaultOptions { fieldLabelModifier = fmap toUpper }
+  toJSON = genericToJSON defaultOptions { fieldLabelModifier = fmap toUpper }
 
 data Extensions = Extensions {
   uvi :: Bool
@@ -382,6 +394,7 @@ data Extensions = Extensions {
 
 instance ToJSON Extensions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
 data AuthenticatorAttachment = Platform | CrossPlatform deriving (Eq, Show)
 
@@ -397,6 +410,7 @@ data AuthenticatorSelection = AuthenticatorSelection {
 
 instance ToJSON AuthenticatorSelection where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
 data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions {
   rp :: RelyingParty
@@ -412,4 +426,5 @@ data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions {
 
 instance ToJSON PublicKeyCredentialCreationOptions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 

@@ -5,7 +5,7 @@ import Test.Tasty ( defaultMain, testGroup, TestTree )
 import Test.Tasty.HUnit (assertEqual,  assertBool, testCaseSteps )
 import Data.String.Interpolate ()
 import Data.ByteString.Base64.URL as BS (decodeLenient)
-import Data.Aeson as A (toJSON, eitherDecode, FromJSON)
+import Data.Aeson as A (toEncoding, toJSON, eitherDecode, FromJSON)
 import URI.ByteString ()
 import Data.X509.CertificateStore ( readCertificateStore )
 import Data.ByteString ( ByteString )
@@ -27,6 +27,7 @@ import Web.WebAuthn.Types
       defaultRelyingParty )
 import Data.Aeson.QQ.Simple ( aesonQQ )
 import Data.List.NonEmpty ( NonEmpty((:|)) )
+import Data.Aeson.Encoding (value)
 
 main :: IO ()
 main = defaultMain tests
@@ -38,6 +39,7 @@ androidTests :: TestTree
 androidTests = testGroup "WebAuthn Tests" 
   [
     androidCredentialTest
+    , registrationTest
   ]
 
 androidCredentialTest :: TestTree
@@ -56,7 +58,7 @@ registrationTest = testCaseSteps "Credentials Test" $ \step -> do
   step "Credential creation"
   let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing)) (Base64ByteString "12343434") (User (Base64ByteString "id") Nothing Nothing) (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
   let ref = [aesonQQ| {
-    "rp":{"id":"matrixpay.biz"},
+    "rp":{"id":"webauthn.biz"},
     "challenge":"MTIzNDM0MzQ=",
     "user":{"id":"aWQ="},
     "pubKeyCredParams":[
@@ -65,7 +67,7 @@ registrationTest = testCaseSteps "Credentials Test" $ \step -> do
         "alg":-7
       }],
     "excludeCredentials":[
-      {"type":"public-key", "id": "MTIzNA==", "transports ":["ble"]}
+      {"type":"public-key", "id": "MTIzNA==", "transports":["ble"]}
       ]
     }
   |]
