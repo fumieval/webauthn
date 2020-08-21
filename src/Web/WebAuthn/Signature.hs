@@ -3,14 +3,15 @@ module Web.WebAuthn.Signature (PublicKey(..)
   , parsePublicKey
   , verifySig
   , verifyX509Sig
+  , encodeECSSignature
   ) where
 
-import Control.Monad
-import Data.Bits
+import Control.Monad ((>=>))
+import Data.Bits (unsafeShiftL, (.|.))
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import Crypto.Hash
+import Crypto.Hash (SHA256(..), hashWith)
 import qualified Crypto.PubKey.ECC.ECDSA as EC
 import qualified Crypto.PubKey.ECC.Types as EC
 import qualified Crypto.PubKey.RSA.Types as RSA
@@ -70,6 +71,9 @@ parseECSignature b = case decodeASN1' BER b of
   Right asn1 -> case asn1 of
     Start Sequence:IntVal r:IntVal s:End Sequence:_ -> Just $ EC.Signature r s
     _ -> Nothing
+
+encodeECSSignature :: EC.Signature -> B.ByteString
+encodeECSSignature (EC.Signature r s) = encodeASN1' DER (Start Sequence:IntVal r:IntVal s:End Sequence:[])
 
 parseRS256Signature :: B.ByteString -> Maybe B.ByteString
 parseRS256Signature = unpad >=> \b -> case decodeASN1' BER b of

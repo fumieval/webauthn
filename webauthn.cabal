@@ -10,7 +10,7 @@ homepage:            https://github.com/fumieval/webauthn
 -- bug-reports:
 license:             BSD-3-Clause
 license-file:        LICENSE
-authors:             Fumiaki Kinoshita, Sumit Raja <sumitraja@gmail.com>
+author:              Fumiaki Kinoshita, Sumit Raja <sumitraja@gmail.com>
 maintainer:          fumiexcel@gmail.com
 -- copyright:
 category:            Web

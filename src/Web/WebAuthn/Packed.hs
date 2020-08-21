@@ -17,13 +17,13 @@ data Stmt = Stmt Int ByteString (Maybe (X509.SignedExact X509.Certificate))
 decode :: CBOR.Term -> CBOR.Decoder s Stmt
 decode (CBOR.TMap xs) = do
   let m = Map.fromList xs
-  CBOR.TInt alg <- Map.lookup (CBOR.TString "alg") m ??? "alg"
+  CBOR.TInt algc <- Map.lookup (CBOR.TString "alg") m ??? "alg"
   CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m ??? "sig"
   cert <- case Map.lookup (CBOR.TString "x5c") m of
     Just (CBOR.TList (CBOR.TBytes certBS : _)) ->
       either fail (pure . Just) $ X509.decodeSignedCertificate certBS
     _ -> pure Nothing
-  return $ Stmt alg sig cert
+  return $ Stmt algc sig cert
   where
     Nothing ??? e = fail e
     Just a ??? _ = pure a
