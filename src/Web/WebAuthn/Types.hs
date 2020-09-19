@@ -15,7 +15,7 @@ module Web.WebAuthn.Types (
   , CollectedClientData(..)
   , AuthenticatorData(..)
   -- * Credential
-  , CredentialData(..)
+  , AttestedCredentialData(..)
   , AAGUID(..)
   , CredentialPublicKey(..)
   , CredentialId(..)
@@ -45,6 +45,7 @@ import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail
 import GHC.Generics (Generic)
 
+-- | 13.1. Cryptographic Challenges
 newtype Challenge = Challenge { rawChallenge :: ByteString }
   deriving (Show, Eq, Ord, H.Hashable, CBOR.Serialise)
 
@@ -55,6 +56,7 @@ instance FromJSON Challenge where
   parseJSON = withText "Challenge" $ pure . Challenge
     . Base64.decodeLenient . encodeUtf8
 
+-- | 5.10.1. Client Data Used in WebAuthn Signatures (dictionary CollectedClientData)
 data CollectedClientData = CollectedClientData
   { clientType :: WebAuthnType
   , clientChallenge :: Challenge
@@ -67,7 +69,8 @@ instance FromJSON CollectedClientData where
     <*> obj .: "challenge"
     <*> obj .: "origin"
     <*> fmap (maybe TokenBindingUnsupported id) (obj .:? "tokenBinding")
-
+  
+-- | state of the Token Binding protocol (unsupported)
 data TokenBinding = TokenBindingUnsupported
   | TokenBindingSupported
   | TokenBindingPresent !Text
@@ -93,6 +96,7 @@ data Origin = Origin
   }
   deriving (Show, Eq, Ord)
 
+-- | WebAuthn Relying Party
 data RelyingParty = RelyingParty
   { rpOrigin :: Origin
   , rpId :: ByteString
@@ -113,14 +117,16 @@ instance FromJSON Origin where
           Left e -> fail e
           Right (port, _) -> pure $ Origin sch host $ Just port
 
+-- | 6.1. Authenticator Data
 data AuthenticatorData = AuthenticatorData
   { rpIdHash :: Digest SHA256
   , userPresent :: Bool
   , userVerified :: Bool
-  , attestedCredentialData :: Maybe CredentialData
+  , attestedCredentialData :: Maybe AttestedCredentialData
   , authenticatorDataExtension :: ByteString
   }
 
+-- | A probabilistically-unique byte sequence identifying a public key credential source and its authentication assertions.
 newtype CredentialId = CredentialId { unCredentialId :: ByteString }
   deriving (Show, Eq, H.Hashable, CBOR.Serialise)
 
@@ -130,6 +136,7 @@ instance FromJSON CredentialId where
 instance ToJSON CredentialId where
   toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialId
 
+-- | credential public key encoded in COSE_Key format
 newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: ByteString }
   deriving (Show, Eq, H.Hashable, CBOR.Serialise)
 
@@ -141,23 +148,27 @@ instance FromJSON CredentialPublicKey where
 instance ToJSON CredentialPublicKey where
   toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialPublicKey
 
+-- | AAGUID of the authenticator
 newtype AAGUID = AAGUID { unAAGUID :: ByteString } deriving (Show, Eq)
 
 instance FromJSON AAGUID where
-  parseJSON v = AAGUID . fst . Base16.decode . T.encodeUtf8 <$> parseJSON v
+  parseJSON v = parseJSON v
+    >>= either fail (pure . AAGUID) . Base16.decode . T.encodeUtf8
 
 instance ToJSON AAGUID where
   toJSON = toJSON . T.decodeUtf8 . Base16.encode . unAAGUID
 
-data CredentialData = CredentialData
+-- | 6.4.1. Attested Credential Data
+data AttestedCredentialData = AttestedCredentialData
   { aaguid :: AAGUID
   , credentialId :: CredentialId
   , credentialPublicKey :: CredentialPublicKey
   } deriving (Show, Eq, Generic)
 
-instance J.FromJSON CredentialData
-instance J.ToJSON CredentialData
+instance J.FromJSON AttestedCredentialData
+instance J.ToJSON AttestedCredentialData
 
+-- | 5.4.3. User Account Parameters for Credential Generation
 data User = User
   { userId :: B.ByteString
   , userName :: T.Text

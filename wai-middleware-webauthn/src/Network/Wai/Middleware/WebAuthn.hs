@@ -39,12 +39,12 @@ newtype Identifier = Identifier { unIdentifier :: Text }
   deriving (Show, Eq, Ord, J.FromJSON, J.ToJSON, J.FromJSONKey, J.ToJSONKey, Hashable)
 
 data Handler = Handler
-  { findCredentials :: Identifier -> IO [CredentialData]
+  { findCredentials :: Identifier -> IO [AttestedCredentialData]
   , findPublicKey :: CredentialId -> IO (Maybe (Identifier, CredentialPublicKey))
-  , registerKey :: User -> CredentialData -> IO ()
+  , registerKey :: User -> AttestedCredentialData -> IO ()
   }
 
-type StaticKeys = HM.HashMap Identifier [CredentialData]
+type StaticKeys = HM.HashMap Identifier [AttestedCredentialData]
 
 staticKeys :: StaticKeys -> Handler
 staticKeys authorisedKeys = Handler
@@ -56,7 +56,7 @@ staticKeys authorisedKeys = Handler
   }
   where
     authorisedMap = HM.fromList
-      [(cid, (name, pub)) | (name, ks) <- HM.toList authorisedKeys, CredentialData _ cid pub <- ks]
+      [(cid, (name, pub)) | (name, ks) <- HM.toList authorisedKeys, AttestedCredentialData _ cid pub <- ks]
 
 data Config a = Config
   { handler :: !a

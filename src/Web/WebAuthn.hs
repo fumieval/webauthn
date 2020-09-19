@@ -2,6 +2,16 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+-----------------------------------------------------------------------
+-- |
+-- Module      :  Web.WebAuthn
+-- License     :  BSD3
+--
+-- Maintainer  :  Fumiaki Kinoshita <fumiexcel@gmail.com>
+--
+-- <https://www.w3.org/TR/webauthn/ Web Authentication API> Verification library
+-----------------------------------------------------------------------
+
 module Web.WebAuthn (
   -- * Basic
   TokenBinding(..)
@@ -15,7 +25,7 @@ module Web.WebAuthn (
   , WebAuthnType(..)
   , CollectedClientData(..)
   , AuthenticatorData(..)
-  , CredentialData(..)
+  , AttestedCredentialData(..)
   , AAGUID(..)
   , CredentialPublicKey(..)
   , CredentialId(..)
@@ -37,7 +47,6 @@ import qualified Data.Map as Map
 import Data.Text (Text)
 import Crypto.Random
 import Crypto.Hash
-import Crypto.Hash.Algorithms (SHA256(..))
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
@@ -50,6 +59,7 @@ import qualified Web.WebAuthn.TPM as TPM
 import qualified Web.WebAuthn.FIDOU2F as U2F
 import qualified Web.WebAuthn.Packed as Packed
 
+-- | Generate a cryptographic challenge (13.1).
 generateChallenge :: Int -> IO Challenge
 generateChallenge len = Challenge <$> getRandomBytes len
 
@@ -66,13 +76,14 @@ parseAuthenticatorData = do
       credentialId <- CredentialId <$> C.getBytes (fromIntegral len)
       n <- C.remaining
       credentialPublicKey <- CredentialPublicKey <$> C.getBytes n
-      pure $ Just CredentialData{..}
+      pure $ Just AttestedCredentialData{..}
     else pure Nothing
   let authenticatorDataExtension = B.empty --FIXME
   let userPresent = testBit flags 0
   let userVerified = testBit flags 2
   return AuthenticatorData{..}
 
+-- | Attestation (6.4) provided by authenticators
 data AttestationStatement = AF_Packed Packed.Stmt
   | AF_TPM TPM.Stmt
   | AF_AndroidKey
@@ -94,13 +105,14 @@ decodeAttestation = do
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (adRaw, stmt)
 
+-- | 7.1. Registering a New Credential
 registerCredential :: Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
   -> Bool -- ^ require user verification?
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
-  -> Either VerificationFailure CredentialData
+  -> Either VerificationFailure AttestedCredentialData
 registerCredential challenge RelyingParty{..} tbi verificationRequired clientDataJSON attestationObject = do
   CollectedClientData{..} <- either
     (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
@@ -137,6 +149,7 @@ registerCredential challenge RelyingParty{..} tbi verificationRequired clientDat
     Nothing -> Left MalformedAuthenticatorData
     Just c -> pure c
 
+-- | 7.2. Verifying an Authentication Assertion
 verify :: Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64

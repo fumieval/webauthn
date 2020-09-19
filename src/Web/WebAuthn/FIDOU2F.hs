@@ -31,7 +31,7 @@ verify :: Stmt
   -> Digest SHA256
   -> Either VerificationFailure ()
 verify (Stmt cert sig) AuthenticatorData{..} clientDataHash = do
-  CredentialData{..} <- maybe (Left MalformedAuthenticatorData) pure attestedCredentialData
+  AttestedCredentialData{..} <- maybe (Left MalformedAuthenticatorData) pure attestedCredentialData
   m <- either (Left . CBORDecodeError "verifyFIDOU2F") pure
     $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey credentialPublicKey
   pubU2F <- maybe (Left MalformedPublicKey) pure $ do
