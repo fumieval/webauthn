@@ -53,9 +53,6 @@
     <span class="placeholder">Messages will be displayed here</span>
   </div>
   <div id="form-register">
-    <label for="webauthn-full-name">Full name</label>
-    <input type="text" id="webauthn-full-name">
-    <br>
     <label for="webauthn-display-name">Displayed name</label>
     <input type="text" id="webauthn-display-name">
     <br>
@@ -75,17 +72,18 @@
       , function(e){
       uid = [];
       for (var a=[],i=0;i<64;i++){ uid.push(Math.random() * 256) }
+      let name = document.getElementById("webauthn-display-name").value;
       let user = {
           id: new Uint8Array(uid),
-          name: document.getElementById("webauthn-full-name").value,
-          displayName: document.getElementById("webauthn-display-name").value
+          displayName: name,
+          name: name
           };
         auth.register(user).then(result => {
           var div = document.createElement("section");
           div.innerHTML = "Add the following pair to config.yaml: <pre><code>"
             + user.displayName + ":"
-            + "\n- aaguid: " + result.aaguid
-            + "\n  credentialId: " + result.credentialId
+            + "\n- aaguid: '" + result.aaguid
+            + "'\n  credentialId: " + result.credentialId
             + "\n  credentialPublicKey: " + result.credentialPublicKey
             + "\n</code></pre>";
           document.getElementById("webauthn-result").appendChild(div);

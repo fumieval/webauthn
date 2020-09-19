@@ -38,7 +38,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Read as T
 import Crypto.Hash
-import Crypto.Hash.Algorithms (SHA256(..))
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.Serialise as CBOR
@@ -171,19 +170,17 @@ instance J.ToJSON AttestedCredentialData
 -- | 5.4.3. User Account Parameters for Credential Generation
 data User = User
   { userId :: B.ByteString
-  , userName :: T.Text
   , userDisplayName :: T.Text
   } deriving (Generic, Show, Eq)
 
 instance CBOR.Serialise User where
-  encode (User i n d) = CBOR.encode $ Map.fromList
-    [("id" :: Text, CBOR.TBytes i), ("name", CBOR.TString n), ("displayName", CBOR.TString d)]
+  encode (User i d) = CBOR.encode $ Map.fromList
+    [("id" :: Text, CBOR.TBytes i), ("displayName", CBOR.TString d)]
   decode = do
     m <- CBOR.decode
     CBOR.TBytes i <- maybe (fail "id") pure $ Map.lookup ("id" :: Text) m
-    CBOR.TString n <- maybe (fail "name") pure $ Map.lookup "name" m
     CBOR.TString d <- maybe (fail "displayName") pure $ Map.lookup "displayName" m
-    return $ User i n d
+    return $ User i d
 
 data VerificationFailure
   = InvalidType
