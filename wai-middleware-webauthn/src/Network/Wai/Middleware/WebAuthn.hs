@@ -90,6 +90,7 @@ responseJSON val = responseLBS status200 ((hContentType, "application/json") : h
 -- If it receives a request containing an Authorization: TOKEN header, it checks
 -- if TOKEN is valid. If so, replaces TOKEN by the corresponding 'Identifier'.
 -- Otherwise, returns 403.
+--
 mkMiddleware :: Config Handler -> IO Middleware
 mkMiddleware Config{..} = do
   vTokens <- newIORef HM.empty
