@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------
 -- |
--- Module      :  Web.WebAuthn
+-- Module      :  WebAuthn
 -- License     :  BSD3
 --
 -- Maintainer  :  Fumiaki Kinoshita <fumiexcel@gmail.com>
@@ -12,7 +12,7 @@
 -- <https://www.w3.org/TR/webauthn/ Web Authentication API> Verification library
 -----------------------------------------------------------------------
 
-module Web.WebAuthn (
+module WebAuthn (
   -- * Basic
   TokenBinding(..)
   , Origin(..)
@@ -53,11 +53,11 @@ import qualified Codec.CBOR.Decoding as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail
 
-import Web.WebAuthn.Signature
-import Web.WebAuthn.Types
-import qualified Web.WebAuthn.TPM as TPM
-import qualified Web.WebAuthn.FIDOU2F as U2F
-import qualified Web.WebAuthn.Packed as Packed
+import WebAuthn.Signature
+import WebAuthn.Types
+import qualified WebAuthn.TPM as TPM
+import qualified WebAuthn.FIDOU2F as U2F
+import qualified WebAuthn.Packed as Packed
 
 -- | Generate a cryptographic challenge (13.1).
 generateChallenge :: Int -> IO Challenge

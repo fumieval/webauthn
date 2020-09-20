@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-module Web.WebAuthn.FIDOU2F where
+module WebAuthn.FIDOU2F where
 
 import Crypto.Hash
 import Data.ByteString (ByteString)
@@ -12,7 +12,7 @@ import qualified Data.ByteArray as BA
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified Data.X509.Validation as X509
-import Web.WebAuthn.Types
+import WebAuthn.Types
 
 data Stmt = Stmt (X509.SignedExact X509.Certificate) ByteString
   deriving Show

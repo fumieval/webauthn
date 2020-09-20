@@ -18,12 +18,12 @@ extra-source-files:  CHANGELOG.md
 
 library
   exposed-modules:
-    Web.WebAuthn
-    Web.WebAuthn.Types
-    Web.WebAuthn.FIDOU2F
-    Web.WebAuthn.Packed
-    Web.WebAuthn.Signature
-    Web.WebAuthn.TPM
+    WebAuthn
+    WebAuthn.Types
+    WebAuthn.FIDOU2F
+    WebAuthn.Packed
+    WebAuthn.Signature
+    WebAuthn.TPM
   build-depends:       base == 4.*
     , containers
     , cryptonite

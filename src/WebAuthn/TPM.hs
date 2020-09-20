@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Web.WebAuthn.TPM where
+module WebAuthn.TPM where
 
 import Data.ByteString (ByteString)
 import Crypto.Hash (Digest, SHA256)
@@ -8,7 +8,7 @@ import qualified Data.X509.Validation as X509
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
-import Web.WebAuthn.Types (VerificationFailure(..), AuthenticatorData)
+import WebAuthn.Types (VerificationFailure(..), AuthenticatorData)
 
 data Stmt = Stmt Int ByteString (X509.SignedExact X509.Certificate) ByteString deriving Show
 

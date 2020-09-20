@@ -19,7 +19,7 @@ module Network.Wai.Middleware.WebAuthn
 import Control.Concurrent
 import Control.Monad (forever)
 import Crypto.Random (getRandomBytes)
-import Web.WebAuthn as W
+import WebAuthn as W
 import qualified Data.Aeson as J
 import Data.Text (Text)
 import Data.Hashable (Hashable)

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Web.WebAuthn.Signature (PublicKey(..)
+module WebAuthn.Signature (PublicKey(..)
   , parsePublicKey
   , verifySig
   ) where
@@ -20,7 +20,7 @@ import qualified Data.Map as Map
 import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import Data.ASN1.Types
-import Web.WebAuthn.Types
+import WebAuthn.Types
 
 data PublicKey = PubEC EC.PublicKey | PubRSA RSA.PublicKey
 

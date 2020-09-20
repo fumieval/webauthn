@@ -3,7 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
-module Web.WebAuthn.Types (
+module WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)
   , Origin(..)
