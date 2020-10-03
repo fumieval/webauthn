@@ -14,7 +14,7 @@ author:              Fumiaki Kinoshita
 maintainer:          fumiexcel@gmail.com
 -- copyright:
 -- category:
-extra-source-files:  CHANGELOG.md
+-- extra-source-files:  CHANGELOG.md
 data-files:
   lib.js
 
@@ -33,6 +33,7 @@ library
     , http-types
     , cryptonite
     , cborg
+    , x509-store
   exposed-modules: Network.Wai.Middleware.WebAuthn
   ghc-options: -Wall
   hs-source-dirs: src
