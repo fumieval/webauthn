@@ -4,11 +4,11 @@ module WebAuthn.TPM where
 import Data.ByteString (ByteString)
 import Crypto.Hash (Digest, SHA256)
 import qualified Data.X509 as X509
-import qualified Data.X509.Validation as X509
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
 import WebAuthn.Types (VerificationFailure(..), AuthenticatorData)
+import WebAuthn.Signature (verifyX509Sig)
 
 data Stmt = Stmt Int ByteString (X509.SignedExact X509.Certificate) ByteString deriving Show
 
@@ -38,8 +38,5 @@ verify (Stmt alg sig x509 certInfo) _ad _adRaw _clientDataHash = do
   -- let attToBeSigned = adRaw <> BA.convert clientDataHash
   -- https://www.iana.org/assignments/cose/cose.xhtml#algorithms
   case alg of
-    -65535 -> do
-      case X509.verifySignature (X509.SignatureALG X509.HashSHA1 X509.PubKeyALG_RSA) pub certInfo sig of
-        X509.SignaturePass -> return ()
-        X509.SignatureFailed _ -> Left $ SignatureFailure "TPM"
+    -65535 -> verifyX509Sig (X509.SignatureALG X509.HashSHA1 X509.PubKeyALG_RSA) pub certInfo sig "TPM"
     _ -> Left $ UnsupportedAlgorithm alg

@@ -2,14 +2,16 @@
 module WebAuthn.Signature (PublicKey(..)
   , parsePublicKey
   , verifySig
+  , verifyX509Sig
+  , encodeECSSignature
   ) where
 
-import Control.Monad
-import Data.Bits
+import Control.Monad ((>=>))
+import Data.Bits (unsafeShiftL, (.|.))
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import Crypto.Hash
+import Crypto.Hash (SHA256(..), hashWith)
 import qualified Crypto.PubKey.ECC.ECDSA as EC
 import qualified Crypto.PubKey.ECC.Types as EC
 import qualified Crypto.PubKey.RSA.Types as RSA
@@ -21,6 +23,8 @@ import Data.ASN1.BinaryEncoding
 import Data.ASN1.Encoding
 import Data.ASN1.Types
 import WebAuthn.Types
+import qualified Data.X509 as X509
+import qualified Data.X509.Validation as X509
 
 data PublicKey = PubEC EC.PublicKey | PubRSA RSA.PublicKey
 
@@ -68,6 +72,9 @@ parseECSignature b = case decodeASN1' BER b of
     Start Sequence:IntVal r:IntVal s:End Sequence:_ -> Just $ EC.Signature r s
     _ -> Nothing
 
+encodeECSSignature :: EC.Signature -> B.ByteString
+encodeECSSignature (EC.Signature r s) = encodeASN1' DER (Start Sequence:IntVal r:IntVal s:End Sequence:[])
+
 parseRS256Signature :: B.ByteString -> Maybe B.ByteString
 parseRS256Signature = unpad >=> \b -> case decodeASN1' BER b of
   Left _ -> Nothing
@@ -87,3 +94,8 @@ unpad packed
                               , z == "\NUL"
                               , B.length ps >= 8
                               ]
+
+verifyX509Sig :: X509.SignatureALG -> X509.PubKey -> B.ByteString -> B.ByteString -> [Char] -> Either VerificationFailure ()
+verifyX509Sig sigType pub dat sig msg = case X509.verifySignature sigType pub dat sig of
+  X509.SignaturePass -> pure ()
+  X509.SignatureFailed e -> Left (SignatureFailure (msg <> " " <> show e))
