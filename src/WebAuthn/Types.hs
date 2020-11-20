@@ -37,6 +37,9 @@ module WebAuthn.Types (
   , AuthenticatorSelection (..)
   , UserVerification (..)
   , PubKeyCredAlg (..)
+  , AuthnSel
+  , BiometricPerfBounds
+  , AuthenticatorAttachment
   ) where
 
 import Prelude hiding (fail)
@@ -110,6 +113,7 @@ data CollectedClientData = CollectedClientData
   , clientOrigin :: Origin
   , clientTokenBinding :: TokenBinding
   }
+
 instance FromJSON CollectedClientData where
   parseJSON = withObject "CollectedClientData" $ \obj -> CollectedClientData
     <$> obj .: "type"
@@ -307,7 +311,7 @@ data JWTHeader = JWTHeader {
 
 instance FromJSON JWTHeader
 
-data PublicKeyCredentialType = PublicKey deriving (Eq, Show)
+data PublicKeyCredentialType = PublicKey deriving (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialType where
   toJSON PublicKey = String "public-key"
@@ -357,7 +361,7 @@ instance ToJSON PublicKeyCredentialRequestOptions where
 data PubKeyCredAlg = ES256 -- -7 
   | RS256 -- (-257) 
   | PS256 -- (-37)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 instance ToJSON PubKeyCredAlg where
   toJSON ES256 = Number (-7)
@@ -407,7 +411,7 @@ instance ToJSON Extensions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
-data AuthenticatorAttachment = Platform | CrossPlatform deriving (Eq, Show)
+data AuthenticatorAttachment = Platform | CrossPlatform deriving (Eq, Show, Generic)
 
 instance ToJSON AuthenticatorAttachment where
   toJSON Platform = String "platform"
