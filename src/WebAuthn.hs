@@ -27,48 +27,50 @@ module WebAuthn (
   , CollectedClientData(..)
   , AuthenticatorData(..)
   , AttestedCredentialData(..)
+  , AttestationObject(..)
   , AAGUID(..)
   , CredentialPublicKey(..)
   , CredentialId(..)
   -- * verfication
   , VerificationFailure(..)
   , registerCredential
+  , CredentialCreationOptions(..)
   , defaultCredentialCreationOptions
   , verify
   , encodeAttestation
   ) where
 
-import Prelude hiding (fail)
-import Data.Aeson as J
-import Data.Bits
-import Data.ByteString (ByteString)
-import qualified Data.Serialize as C
-import qualified Data.ByteArray as BA
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Map as Map
-import Data.Text (Text)
-import Crypto.Random
-import Crypto.Hash
-import qualified Codec.CBOR.Term as CBOR
-import qualified Codec.CBOR.Read as CBOR
-import qualified Codec.CBOR.Decoding as CBOR
-import qualified Codec.CBOR.Encoding as CBOR
-import qualified Codec.Serialise as CBOR
-import Control.Monad.Fail
-import WebAuthn.Signature
-import WebAuthn.Types
-import qualified WebAuthn.TPM as TPM
-import qualified WebAuthn.FIDOU2F as U2F
-import qualified WebAuthn.Packed as Packed
-import qualified WebAuthn.AndroidSafetyNet as Android
+import Codec.CBOR.Decoding qualified as CBOR
+import Codec.CBOR.Encoding qualified as CBOR
+import Codec.CBOR.Read qualified as CBOR
+import Codec.CBOR.Term qualified as CBOR
+import Codec.Serialise qualified as CBOR
 import Control.Monad (unless)
+import Control.Monad.Fail
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
-import Data.Text (pack)
-import qualified Data.X509.CertificateStore as X509
+import Crypto.Hash
+import Crypto.Random
+import Data.Aeson as J
 import Data.Bifunctor (first)
+import Data.Bits
+import Data.ByteArray qualified as BA
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as B
+import Data.ByteString.Lazy qualified as BL
+import Data.Hourglass (DateTime)
+import Data.Map qualified as Map
+import Data.Serialize qualified as C
+import Data.Text (pack, Text)
 import Data.Text.Encoding (encodeUtf8)
+import Data.X509.CertificateStore qualified as X509
+import Prelude hiding (fail)
+import WebAuthn.AndroidSafetyNet qualified as Android
+import WebAuthn.FIDOU2F qualified as U2F
+import WebAuthn.Packed qualified as Packed
+import WebAuthn.Signature
+import WebAuthn.TPM qualified as TPM
+import WebAuthn.Types
 
 -- | Generate a cryptographic challenge (13.1).
 generateChallenge :: Int -> IO Challenge
@@ -125,14 +127,14 @@ decodeAttestation = do
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (AttestationObject fmt stmt adRaw)
 
-encodeAttestation :: AttestationObject -> CBOR.Encoding 
-encodeAttestation attestationObject = CBOR.encodeMapLen 3 
+encodeAttestation :: AttestationObject -> CBOR.Encoding
+encodeAttestation attestationObject = CBOR.encodeMapLen 3
   <> CBOR.encodeString "fmt"
   <> encodeAttestationFmt
   <> CBOR.encodeString  "attStmt"
   where
     encodeAttestationFmt :: CBOR.Encoding
-    encodeAttestationFmt =  case (attStmt attestationObject) of
+    encodeAttestationFmt =  case attStmt attestationObject of
       AF_FIDO_U2F _ -> CBOR.encodeString "fido-u2f"
       AF_Packed _ -> CBOR.encodeString "packed"
       AF_TPM _ -> CBOR.encodeString "tpm"
@@ -145,21 +147,22 @@ registerCredential :: MonadIO m => X509.CertificateStore
   -> CredentialCreationOptions
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
+  -> Maybe DateTime
   -> m (Either VerificationFailure AttestedCredentialData)
-registerCredential certStore opts clientDataJSON attestationObjectBS = runExceptT $ do
+registerCredential certStore opts clientDataJSON attestationObjectBS maybeNow = runExceptT $ do
   _ <- hoistEither runAttestationCheck
   attestationObject <- hoistEither $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
         $ CBOR.deserialiseFromBytes decodeAttestation
-        $ BL.fromStrict 
+        $ BL.fromStrict
         $ attestationObjectBS
   ad <- hoistEither $ extractAuthData attestationObject
   mAdPubKey <- verifyPubKey ad
   -- TODO: extensions here
-  case (attStmt attestationObject) of
+  case attStmt attestationObject of
     AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
     AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey ad (authData attestationObject) clientDataHash
     AF_TPM s -> hoistEither $ TPM.verify s ad (authData attestationObject) clientDataHash
-    AF_AndroidSafetyNet s -> Android.verify certStore s (authData attestationObject) clientDataHash
+    AF_AndroidSafetyNet s -> Android.verify certStore s (authData attestationObject) clientDataHash maybeNow
     AF_None -> pure ()
     _ -> throwE (UnsupportedAttestationFormat (pack $ show (attStmt attestationObject)))
 
@@ -169,7 +172,7 @@ registerCredential certStore opts clientDataJSON attestationObjectBS = runExcept
   where
     RelyingParty rpOrigin rpId _ _ = ccoRelyingParty opts
     clientDataHash = hash clientDataJSON :: Digest SHA256
-    runAttestationCheck = do 
+    runAttestationCheck = do
       CollectedClientData{..} <- either
         (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
       clientType == Create ?? InvalidType
@@ -218,7 +221,7 @@ verify challenge rp tbi verificationRequired clientDataJSON adRaw sig pub = do
   verifySig pub' sig dat
 
 clientDataCheck :: WebAuthnType -> Challenge -> ByteString -> RelyingParty -> Maybe Text -> Either VerificationFailure ()
-clientDataCheck ctype challenge clientDataJSON rp tbi = do 
+clientDataCheck ctype challenge clientDataJSON rp tbi = do
   ccd <-  first JSONDecodeError (J.eitherDecode $ BL.fromStrict clientDataJSON)
   clientType ccd == ctype ?? InvalidType
   challenge == clientChallenge ccd ?? MismatchedChallenge challenge (clientChallenge ccd)
@@ -230,7 +233,7 @@ verifyClientTokenBinding tbi (TokenBindingPresent t) = case tbi of
       Nothing -> Left UnexpectedPresenceOfTokenBinding
       Just t'
         | t == t' -> pure ()
-        | otherwise -> Left MismatchedTokenBinding 
+        | otherwise -> Left MismatchedTokenBinding
 verifyClientTokenBinding _ _ = pure ()
 
 verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
