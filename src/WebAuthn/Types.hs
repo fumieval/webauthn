@@ -97,14 +97,15 @@ instance FromJSON Base64ByteString where
 
 -- | 13.1. Cryptographic Challenges
 newtype Challenge = Challenge { rawChallenge :: ByteString }
-  deriving (Show, Eq, Ord, H.Hashable, CBOR.Serialise)
+  deriving (Show, Eq, Ord, Generic, H.Hashable, CBOR.Serialise)
 
 instance ToJSON Challenge where
   toJSON = toJSON . decodeUtf8 . Base64.encode . rawChallenge
 
 instance FromJSON Challenge where
-  parseJSON = withText "Challenge" $ pure . Challenge
-    . Base64.decodeLenient . encodeUtf8
+  parseJSON (String s) = (pure . Challenge . Base64.decodeLenient . encodeUtf8) s
+  parseJSON oth = typeMismatch "Expecting String of Base64" oth
+
 
 -- | 5.10.1. Client Data Used in WebAuthn Signatures (dictionary CollectedClientData)
 data CollectedClientData = CollectedClientData
@@ -195,7 +196,7 @@ data AuthenticatorData = AuthenticatorData
 
 -- | A probabilistically-unique byte sequence identifying a public key credential source and its authentication assertions.
 newtype CredentialId = CredentialId { unCredentialId :: ByteString }
-  deriving (Show, Eq, H.Hashable, CBOR.Serialise)
+  deriving (Show, Eq, Generic, H.Hashable, CBOR.Serialise)
 
 instance FromJSON CredentialId where
   parseJSON = fmap (CredentialId . Base64.decodeLenient . T.encodeUtf8) . parseJSON
@@ -346,7 +347,7 @@ instance ToJSON UserVerification where
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
-  challenge :: Base64ByteString
+  challenge :: Challenge
   , timeout :: Maybe Integer
   , rpId :: Maybe Text
   , allowCredentials ::Maybe (NonEmpty PublicKeyCredentialDescriptor)
@@ -429,7 +430,7 @@ instance ToJSON AuthenticatorSelection where
 
 data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions {
   rp :: RelyingParty
-  , challenge :: Base64ByteString
+  , challenge :: Challenge
   , user :: User
   , pubKeyCredParams :: NonEmpty PubKeyCredParam
   , timeout :: Maybe Integer
