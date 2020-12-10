@@ -153,7 +153,7 @@ registerCredential cs challenge (RelyingParty rpOrigin rpId _ _) tbi verificatio
         $ attestationObjectBS
   ad <- hoistEither $ extractAuthData attestationObject
     -- TODO: extensions here
-  case (attStmt attestationObject) of
+  case attStmt attestationObject of
     AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
     AF_Packed s -> hoistEither $ Packed.verify s ad (authData attestationObject) clientDataHash
     AF_TPM s -> hoistEither $ TPM.verify s ad (authData attestationObject) clientDataHash

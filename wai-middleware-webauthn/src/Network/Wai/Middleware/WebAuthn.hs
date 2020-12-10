@@ -50,7 +50,7 @@ type StaticKeys = HM.HashMap Identifier [AttestedCredentialData]
 staticKeys :: StaticKeys -> Handler
 staticKeys authorisedKeys = Handler
   { findCredentials = \ident -> pure
-    $ maybe [] id
+    $ maybe [] Prelude.id
     $ HM.lookup ident authorisedKeys
   , findPublicKey = \cid -> pure $ HM.lookup cid authorisedMap
   , registerKey = \_ _ -> pure ()
@@ -98,9 +98,9 @@ mkMiddleware :: Config Handler -> IO Middleware
 mkMiddleware Config{..} = do
   vTokens <- newIORef HM.empty
   libJSPath <- getDataFileName "lib.js"
-  cspath <- (getDataFileName "cacert.pem")
+  cspath <- getDataFileName "cacert.pem"
   Just cs <- X509.readCertificateStore cspath
-  let theRelyingParty = W.defaultRelyingParty origin
+  let theRelyingParty = W.defaultRelyingParty origin "Display Name"
 
   _ <- forkIO $ forever $ do
       now <- getMonotonicTime

@@ -149,7 +149,7 @@ data Origin = Origin
   deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON Origin where
-  toJSON origin = String (originScheme origin <> "://" <> originHost origin <> (port $ originPort origin))
+  toJSON origin = String (originScheme origin <> "://" <> originHost origin <> port (originPort origin))
     where
       port (Just int) = ":" <> T.pack (show int)
       port Nothing = ""
@@ -159,22 +159,22 @@ data RelyingParty = RelyingParty
   { rpOrigin :: Origin
   , rpId :: Text
   , icon :: Maybe Base64ByteString
-  , name :: Maybe Base64ByteString
+  , name :: Text
   }
   deriving (Show, Eq, Generic)
 
 instance ToJSON RelyingParty where
   toJSON rpo = object (["id" .= toJSON (rpId (rpo :: RelyingParty))] 
     <> maybeToPair "icon" (icon rpo)
-    <> maybeToPair "name" (name (rpo :: RelyingParty)))
+    <> [ "name" .= name (rpo :: RelyingParty)])
 
 maybeToPair :: Text -> Maybe Base64ByteString -> [Pair]
 maybeToPair _ Nothing = []
 maybeToPair lbl (Just bs) = [lbl .= toJSON bs]
 
 
-defaultRelyingParty :: Origin -> RelyingParty
-defaultRelyingParty orig = RelyingParty orig (originHost orig) Nothing Nothing
+defaultRelyingParty :: Origin -> Text -> RelyingParty
+defaultRelyingParty orig = RelyingParty orig (originHost orig) Nothing
 
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
@@ -236,11 +236,11 @@ instance J.FromJSON AttestedCredentialData
 instance J.ToJSON AttestedCredentialData
 
 -- | 5.4.3. User Account Parameters for Credential Generation
-data User = User { 
-  id :: Base64ByteString
-  , name :: Maybe T.Text
-  , displayName :: Maybe T.Text
-} deriving (Generic, Show, Eq)
+data User = User 
+  { id :: Text
+  , name :: T.Text
+  , displayName ::  T.Text
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON User where
   toJSON = genericToJSON defaultOptions { omitNothingFields = True}
@@ -248,23 +248,15 @@ instance ToJSON User where
 
 instance CBOR.Serialise User where
   encode (User i n d) = CBOR.encode $ Map.fromList
-    ([("id" :: Text, CBOR.TBytes (unBase64ByteString i))] 
-      <> maybeToCBORString "name" n 
-      <> maybeToCBORString "displayName" d)
+    ([("id" :: Text, CBOR.TBytes (encodeUtf8 i))] 
+      <> [("name" :: Text, CBOR.TString n)]
+      <> [("displayName" :: Text, CBOR.TString d)])
   decode = do
     m <- CBOR.decode
     CBOR.TBytes i <- maybe (fail "id") pure $ Map.lookup ("id" :: Text) m
-    let mayn = Map.lookup "name" m
-    let mayd = Map.lookup "displayName" m
-    return $ User (Base64ByteString i) (maybeCBORTStringToText mayn) (maybeCBORTStringToText mayd)
-
-maybeCBORTStringToText :: Maybe CBOR.Term -> Maybe Text
-maybeCBORTStringToText (Just (CBOR.TString txt)) = Just txt
-maybeCBORTStringToText _ = Nothing
-
-maybeToCBORString :: Text -> Maybe Text -> [(Text, CBOR.Term)]
-maybeToCBORString _ Nothing = []
-maybeToCBORString lbl (Just txt) = [(lbl, CBOR.TString txt)]
+    CBOR.TString n <-  maybe (fail "name") pure $ Map.lookup "name" m
+    CBOR.TString d <-  maybe (fail "name") pure $ Map.lookup "displayName" m
+    return $ User (decodeUtf8 i) n d
 
 data VerificationFailure
   = InvalidType

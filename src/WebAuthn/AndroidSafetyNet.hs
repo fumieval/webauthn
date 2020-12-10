@@ -24,7 +24,6 @@ import qualified Data.X509.Validation as X509
 import qualified Data.X509.CertificateStore as X509
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (SHA256(..))
-import Control.Monad.Fail (MonadFail)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Except (ExceptT(..), throwE)
 import Data.Char (ord)
