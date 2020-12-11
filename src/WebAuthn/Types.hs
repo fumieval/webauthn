@@ -39,7 +39,7 @@ module WebAuthn.Types (
   , PubKeyCredAlg (..)
   , AuthnSel
   , BiometricPerfBounds
-  , AuthenticatorAttachment
+  , AuthenticatorAttachment (..)
   ) where
 
 import Prelude hiding (fail)
@@ -81,6 +81,7 @@ import Data.ByteArray (ByteArrayAccess)
 import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.List.NonEmpty
 import Data.Aeson (genericToJSON)
+import Data.Aeson (genericParseJSON)
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -319,6 +320,9 @@ instance ToJSON AuthenticatorTransport where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
+instance FromJSON AuthenticatorTransport where
+  parseJSON = genericParseJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
+
 data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
   tipe :: PublicKeyCredentialType
   , id :: Base64ByteString
@@ -330,7 +334,7 @@ instance ToJSON PublicKeyCredentialDescriptor where
   toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
 
 mapTipe :: String -> String
-mapTipe str = if str == "tipe" then "type" else str 
+mapTipe str = if str == "tipe" then "type" else str
 
 data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, Generic)
 

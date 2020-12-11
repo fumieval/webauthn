@@ -117,6 +117,7 @@ decodeAttestation = do
     "packed" -> AF_Packed <$> Packed.decode stmtTerm
     "tpm" -> AF_TPM <$> TPM.decode stmtTerm
     "android-safetynet" -> AF_AndroidSafetyNet <$> Android.decode stmtTerm
+    "none" -> pure AF_None
     _ -> fail $ "decodeAttestation: Unsupported format: " ++ show fmt
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (AttestationObject fmt stmt adRaw)
@@ -128,7 +129,7 @@ encodeAttestation attestationObject = CBOR.encodeMapLen 3
   <> CBOR.encodeString  "attStmt"
   where
     encodeAttestationFmt :: CBOR.Encoding
-    encodeAttestationFmt =  case (attStmt attestationObject) of
+    encodeAttestationFmt =  case attStmt attestationObject of
       AF_FIDO_U2F _ -> CBOR.encodeString "fido-u2f"
       AF_Packed _ -> CBOR.encodeString "packed"
       AF_TPM _ -> CBOR.encodeString "tpm"
