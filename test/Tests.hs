@@ -56,11 +56,12 @@ androidCredentialTest = testCaseSteps "Android Test" $ \step -> do
 registrationTest :: TestTree
 registrationTest = testCaseSteps "Credentials Test" $ \step -> do
   step "Credential creation"
-  let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing)) (Base64ByteString "12343434") (User (Base64ByteString "id") Nothing Nothing) (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
+  let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing) "webauthn") (Challenge "12343434") (User "id" "name" "display name") 
+        (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
   let ref = [aesonQQ| {
-    "rp":{"id":"webauthn.biz"},
+    "rp":{"id":"webauthn.biz", "name": "webauthn"},
     "challenge":"MTIzNDM0MzQ=",
-    "user":{"id":"aWQ="},
+    "user":{"id":"id", "name": "name", "displayName":"display name"},
     "pubKeyCredParams":[
       {
         "type":"public-key",
@@ -74,7 +75,7 @@ registrationTest = testCaseSteps "Credentials Test" $ \step -> do
   assertEqual "TOJSON not equal" ref (toJSON pkcco)
 
 defRp :: RelyingParty
-defRp = defaultRelyingParty  (Origin "https" "psteniusubi.github.io" Nothing)
+defRp = defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "psteniusubi"
 
 decodePanic :: FromJSON a => ByteString -> a
 decodePanic s = either error Prelude.id (A.eitherDecode (BL.fromStrict s))
