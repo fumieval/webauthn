@@ -46,7 +46,8 @@ androidCredentialTest :: TestTree
 androidCredentialTest = testCaseSteps "Android Test" $ \step -> do
   step "Registeration check..."
   Just k <- readCertificateStore "test/cacert.pem"
-  eth <- registerCredential k androidChallenge defRp Nothing False androidClientDataJSON androidAttestationObject
+  let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing)) (Base64ByteString "12343434") (User (Base64ByteString "id") Nothing Nothing) (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
+  eth <- registerCredential pkcco k androidChallenge defRp Nothing False androidClientDataJSON androidAttestationObject
   assertBool (show eth) (isRight eth)
   let Right cdata = eth
   step "Verification check..."
