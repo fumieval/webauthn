@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 import WebAuthn
     ( registerCredential,
       verify )
@@ -39,20 +40,12 @@ androidTests :: TestTree
 androidTests = testGroup "WebAuthn Tests" 
   [
     androidCredentialTest
+    , packedSelfAttestedTest
     , registrationTest
   ]
 
 androidCredentialTest :: TestTree
-androidCredentialTest = testCaseSteps "Android Test" $ \step -> do
-  step "Registeration check..."
-  Just k <- readCertificateStore "test/cacert.pem"
-  let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing)) (Base64ByteString "12343434") (User (Base64ByteString "id") Nothing Nothing) (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
-  eth <- registerCredential pkcco k androidChallenge defRp Nothing False androidClientDataJSON androidAttestationObject
-  assertBool (show eth) (isRight eth)
-  let Right cdata = eth
-  step "Verification check..."
-  let eth = verify androidGetChallenge defRp Nothing False androidGetClientDataJSON androidGetAuthenticatorData androidGetSignature (credentialPublicKey cdata)
-  assertBool (show eth) (isRight eth)  
+androidCredentialTest = genericCredentialTest "Android test" androidPublicKeyCredential
 
 registrationTest :: TestTree
 registrationTest = testCaseSteps "Credentials Test" $ \step -> do
@@ -79,6 +72,56 @@ defRp = defaultRelyingParty  (Origin "https" "psteniusubi.github.io" Nothing)
 
 decodePanic :: FromJSON a => ByteString -> a
 decodePanic s = either error Prelude.id (A.eitherDecode (BL.fromStrict s))
+
+data TestPublicKeyCredential = TestPublicKeyCredential 
+                                {
+                                   clientDataJSON :: ByteString
+                                   , attestationObject :: ByteString
+                                   , challenge :: Challenge
+                                   , getChallenge :: Challenge
+                                   , getClientDataJSON :: ByteString
+                                   , getAuthenticatorData :: ByteString
+                                   , getSignature :: ByteString
+                               }
+
+
+androidPublicKeyCredential = TestPublicKeyCredential 
+                             {
+                                clientDataJSON = androidClientDataJSON
+                                , attestationObject = androidAttestationObject
+                                , challenge = androidChallenge
+                                , getChallenge = androidGetChallenge
+                                , getClientDataJSON = androidGetClientDataJSON
+                                , getAuthenticatorData = androidGetAuthenticatorData
+                                , getSignature = androidGetSignature
+                             }
+
+packedSelfAttestedKeyCredential = TestPublicKeyCredential 
+                              {
+                                  clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSkhxcVRQWF9oQkw1bHlDZE9DQzRMNTVzcm9LbXFMX0RDemlOeWx6MXF5dyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
+                                , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZyZjc2lnWEYwRAIgaAVCWvaUJo0NBq_c1yr7R9jXN-G8MqqIOVhswsTX4K0CIFZul9oOTdWwDx4WAb3cgPTTjWzXSSxcjseS33OVqhgWaGF1dGhEYXRhWNUs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUVgAZ6yrc4AAjW8xgpkiwsl8fBVAwBRAft9ACeHPR6QCu6Clp5otBmdIyMGV6w1emT--vpR_JpIKPJdIkNLOjzoLqd-z_j3vKvLCB4pQAwccqPF56HKs4h8DsrEuG0mMx5jJz_9ndh1pQECAyYgASFYIFgD8QsPYGMaq49F7-JWJowfVaxeiFzJUXp2k8nvrRpUIlggyGWqdGOBLZgO61mPMEncHjTmBxFPWzqKbUlBvT1fhRg"
+                                , challenge = Challenge (BS.decodeLenient "JHqqTPX_hBL5lyCdOCC4L55sroKmqL_DCziNylz1qyw")
+                                , getChallenge = Challenge (BS.decodeLenient "VXrK0ywwsYO2k6c52md-Lg2JDOmxrkGMli_4MHJcKaM")
+                                , getClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVlhySzB5d3dzWU8yazZjNTJtZC1MZzJKRE9teHJrR01saV80TUhKY0thTSIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0"
+                                , getAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEFYAGfAg"
+                                , getSignature = BS.decodeLenient "MEYCIQDteZqnEublzIw5AgnOzu5sd7b387GitIHbjNSXFFoFxgIhAP4IFIiyweG__D3VOBSnvneuK794RuGoUNasXhQNe0gk"
+        
+    }
+
+packedSelfAttestedTest = genericCredentialTest "Packed self attested test" packedSelfAttestedKeyCredential
+
+genericCredentialTest :: String -> TestPublicKeyCredential -> TestTree
+genericCredentialTest name TestPublicKeyCredential{..} = testCaseSteps name $ \step -> do
+  step "Registeration check..."
+  Just k <- readCertificateStore "test/cacert.pem"
+  let pkcco = PublicKeyCredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing)) (Base64ByteString "12343434") (User (Base64ByteString "id") Nothing Nothing) (PubKeyCredParam PublicKey ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| []))
+  eth <- registerCredential pkcco k challenge defRp Nothing False clientDataJSON attestationObject
+  assertBool (show eth) (isRight eth)
+  let Right cdata = eth
+  step "Verification check..."
+  let eth = verify getChallenge defRp Nothing False getClientDataJSON getAuthenticatorData getSignature (credentialPublicKey cdata)
+  assertBool (show eth) (isRight eth)  
+
 
 androidClientDataJSON :: ByteString
 androidClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWkIyQVJraDZ3RVBoZkdjSFBRWWpWNXNidmxoa3liVlN1ZFQ4Q0VzNTBsNCIsIm9yaWdpbiI6Imh0dHBzOlwvXC9wc3Rlbml1c3ViaS5naXRodWIuaW8iLCJhbmRyb2lkUGFja2FnZU5hbWUiOiJjb20uYW5kcm9pZC5jaHJvbWUifQ"

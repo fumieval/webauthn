@@ -1,6 +1,12 @@
-
 module WebAuthn.Packed where
 
+import Data.ByteString.Lazy (fromStrict)
+import Data.ASN1.BinaryEncoding (DER(..))
+import Data.ASN1.Prim (ASN1(..))
+import Data.ASN1.Encoding (decodeASN1)
+import Data.ByteString.Char8 (unpack)
+import Data.Maybe (fromMaybe)
+import Data.Text (Text, pack)
 import Data.Maybe (isJust)
 import qualified Data.ASN1.OID as OID (OID, getObjectID)
 import Data.List (find)
@@ -47,32 +53,40 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
         let x509Cert = X509.getCertificate x509 
             pub = X509.certPubKey x509Cert
         verifyX509Sig (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig "Packed"
-        when (not (certMeetsCriteria x509Cert)) $ Left MalformedAuthenticatorData
+        certMeetsCriteria x509Cert
     Nothing -> do
       adPubKey <- maybe (Left MalformedAuthenticatorData) return mAdPubKey
       when (not $ hasMatchingAlg adPubKey algo) $ Left MalformedAuthenticatorData
       verifySig adPubKey sig dat
     where
-        certMeetsCriteria :: X509.Certificate -> Bool
-        certMeetsCriteria c =
-            let 
-                maaguid = unAAGUID . aaguid <$> attestedCredentialData ad
+        certMeetsCriteria :: X509.Certificate -> Either VerificationFailure ()
+        certMeetsCriteria c = do
+            let maaguid = unAAGUID . aaguid <$> attestedCredentialData ad
                 (X509.Extensions mX509Exts) = X509.certExtensions c
                 mX509Ext = mX509Exts >>= findProperExtension [1,3,6,1,4,1,45724,1,1,4]
                 dnElements = X509.getDistinguishedElements $ X509.certSubjectDN c
-            in
-                (maybe False ((==) maaguid . Just . X509.extRawContent) mX509Ext)
-                &&
+            adAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID provided in attested credential data") (return . unAAGUID . aaguid) $ attestedCredentialData ad
+            certAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID present in x509 extensions") (decodeAAGUID . X509.extRawContent) mX509Ext
+            when (certAAGUID /= adAAGUID) . Left . MalformedX509Certificate $ "AAGUID in attested credential data doesn't match the one in x509 extensions"
+            when (not 
                 (hasDnElement X509.DnCountry dnElements)
                 &&
                 (hasDnElement X509.DnOrganization dnElements)
                 &&
                 (hasDnElement X509.DnCommonName dnElements)
                 &&
-                (findDnElement X509.DnOrganizationUnit dnElements == Just "Authenticator Attestation")
+                (findDnElement X509.DnOrganizationUnit dnElements == Just "Authenticator Attestation")) . Left $ MalformedX509Certificate "Certificate SubjectDN doesn't meet crtieria"
         hasDnElement :: X509.DnElement -> [(OID.OID, X509.ASN1CharacterString)] -> Bool
         hasDnElement el = isJust . findDnElement el
         findDnElement :: X509.DnElement -> [(OID.OID, X509.ASN1CharacterString)] -> Maybe X509.ASN1CharacterString
         findDnElement dnElementName = fmap snd . find ((==) (OID.getObjectID dnElementName) . fst)
         findProperExtension :: OID.OID -> [X509.ExtensionRaw] -> Maybe X509.ExtensionRaw
         findProperExtension extensionOID = find ((==) extensionOID . X509.extRawOID)
+        showByteString :: Maybe ByteString -> Text
+        showByteString bs = fromMaybe "" (pack . unpack <$> bs)
+        decodeAAGUID :: ByteString -> Either VerificationFailure ByteString
+        decodeAAGUID bs = do
+            asn1 <- either (const . Left $ MalformedX509Certificate "AAGUID decoding failed") return . decodeASN1 DER $ fromStrict bs
+            case asn1 of
+              [(OctetString s)] -> Right s
+              _ -> Left $ MalformedX509Certificate "AAGUIID in wrong format - should be OctetString"
