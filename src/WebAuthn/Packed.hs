@@ -7,7 +7,7 @@ import Data.ASN1.Encoding (decodeASN1)
 import Data.Maybe (isJust)
 import qualified Data.ASN1.OID as OID (OID, getObjectID)
 import Data.List (find)
-import Control.Monad (when)
+import Control.Monad (unless)
 import Crypto.Hash
 import qualified Data.ByteString as BS
 import qualified Data.ByteArray as BA
@@ -53,7 +53,7 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
         certMeetsCriteria x509Cert
     Nothing -> do
       adPubKey <- maybe (Left MalformedAuthenticatorData) return mAdPubKey
-      when (not $ hasMatchingAlg adPubKey algo) $ Left MalformedAuthenticatorData
+      unless (hasMatchingAlg adPubKey algo) $ Left MalformedAuthenticatorData
       verifySig adPubKey sig dat
     where
         certMeetsCriteria :: X509.Certificate -> Either VerificationFailure ()
@@ -63,8 +63,8 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
                 dnElements = X509.getDistinguishedElements $ X509.certSubjectDN c
             adAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID provided in attested credential data") (return . unAAGUID . aaguid) $ attestedCredentialData ad
             certAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID present in x509 extensions") (decodeAAGUID . X509.extRawContent) mX509Ext
-            when (certAAGUID /= adAAGUID) . Left . MalformedX509Certificate $ "AAGUID in attested credential data doesn't match the one in x509 extensions"
-            when (not 
+            unless (certAAGUID == adAAGUID) . Left . MalformedX509Certificate $ "AAGUID in attested credential data doesn't match the one in x509 extensions"
+            unless ( 
                 (hasDnElement X509.DnCountry dnElements)
                 &&
                 (hasDnElement X509.DnOrganization dnElements)
