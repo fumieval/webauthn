@@ -30,18 +30,16 @@ decode (CBOR.TMap xs) = do
 decode _ = fail "Packed.decode: expected a Map"
 
 verify :: Stmt
-  -> AuthenticatorData
+  -> Maybe PublicKey
   -> ByteString
   -> Digest SHA256
   -> Either VerificationFailure ()
-verify (Stmt _ sig cert) ad adRaw clientDataHash = do
+verify (Stmt _ sig cert) mAdPubKey adRaw clientDataHash = do
   let dat = adRaw <> BA.convert clientDataHash
   case cert of
     Just x509 -> do
       let pub = X509.certPubKey $ X509.getCertificate x509
       verifyX509Sig (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig "Packed"
     Nothing -> do
-      pub <- case attestedCredentialData ad of
-          Nothing -> Left MalformedAuthenticatorData
-          Just c -> parsePublicKey $ credentialPublicKey c
-      verifySig pub sig dat
+      adPubKey <- maybe (Left MalformedAuthenticatorData) return mAdPubKey
+      verifySig adPubKey sig dat

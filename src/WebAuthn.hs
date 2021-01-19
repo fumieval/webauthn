@@ -60,6 +60,7 @@ import qualified WebAuthn.TPM as TPM
 import qualified WebAuthn.FIDOU2F as U2F
 import qualified WebAuthn.Packed as Packed
 import qualified WebAuthn.AndroidSafetyNet as Android
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
 import Data.Text (pack)
@@ -137,7 +138,8 @@ encodeAttestation attestationObject = CBOR.encodeMapLen 3
       AF_None -> CBOR.encodeString ""
 
 -- | 7.1. Registering a New Credential
-registerCredential :: MonadIO m => X509.CertificateStore
+registerCredential :: MonadIO m => PublicKeyCredentialCreationOptions
+  -> X509.CertificateStore
   -> Challenge
   -> RelyingParty
   -> Maybe Text -- ^ Token Binding ID in base64
@@ -145,17 +147,18 @@ registerCredential :: MonadIO m => X509.CertificateStore
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
   -> m (Either VerificationFailure AttestedCredentialData)
-registerCredential cs challenge (RelyingParty rpOrigin rpId _ _) tbi verificationRequired clientDataJSON attestationObjectBS = runExceptT $ do
+registerCredential opts cs challenge (RelyingParty rpOrigin rpId _ _) tbi verificationRequired clientDataJSON attestationObjectBS = runExceptT $ do
   _ <- hoistEither runAttestationCheck
   attestationObject <- hoistEither $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
         $ CBOR.deserialiseFromBytes decodeAttestation
         $ BL.fromStrict 
         $ attestationObjectBS
   ad <- hoistEither $ extractAuthData attestationObject
-    -- TODO: extensions here
+  mAdPubKey <- verifyPubKey ad
+  -- TODO: extensions here
   case (attStmt attestationObject) of
     AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
-    AF_Packed s -> hoistEither $ Packed.verify s ad (authData attestationObject) clientDataHash
+    AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey (authData attestationObject) clientDataHash
     AF_TPM s -> hoistEither $ TPM.verify s ad (authData attestationObject) clientDataHash
     AF_AndroidSafetyNet s -> Android.verify cs s (authData attestationObject) clientDataHash
     AF_None -> pure ()
@@ -186,6 +189,16 @@ registerCredential cs challenge (RelyingParty rpOrigin rpId _ _) tbi verificatio
       userPresent ad ?? UserNotPresent
       not verificationRequired || userVerified ad ?? UserUnverified
       pure ad
+    verifyPubKey ad = do
+      let pubKey = credentialPublicKey <$> attestedCredentialData ad
+      case pubKey of
+        Just k -> do
+          parsedPubKey <- either throwE return $ parsePublicKey k
+          let hasProperAlg pubKeyParam = hasMatchingAlg parsedPubKey $ alg (pubKeyParam :: PubKeyCredParam)
+          when (not . any hasProperAlg $ pubKeyCredParams opts) $ throwE MalformedAuthenticatorData
+          return $ Just parsedPubKey
+        -- non present public key will fail anyway or the fmt == 'none'
+        Nothing -> return Nothing
 
 -- | 7.2. Verifying an Authentication Assertion
 verify :: Challenge

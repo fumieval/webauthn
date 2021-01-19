@@ -4,6 +4,7 @@ module WebAuthn.Signature (PublicKey(..)
   , verifySig
   , verifyX509Sig
   , encodeECSSignature
+  , hasMatchingAlg
   ) where
 
 import Control.Monad ((>=>))
@@ -40,6 +41,12 @@ verifySig (PubEC pub) sig dat = do
 verifySig (PubRSA pub) sig dat
   | Just dat' <- parseRS256Signature (RSA.ep pub sig), dat' == BA.convert (hashWith SHA256 dat) = pure ()
   | otherwise = Left $ SignatureFailure "RS256"
+
+hasMatchingAlg :: PublicKey -> PubKeyCredAlg -> Bool
+hasMatchingAlg key algo =
+    case key of
+      PubEC (EC.PublicKey curve _) -> algo == ES256 && curve == EC.getCurveByName EC.SEC_p256r1
+      PubRSA (RSA.PublicKey size _ _) -> algo == RS256 && size == 256
 
 parsePublicKey :: CredentialPublicKey -> Either VerificationFailure PublicKey
 parsePublicKey pub = do
