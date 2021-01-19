@@ -75,7 +75,7 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
         hasDnElement :: X509.DnElement -> [(OID.OID, X509.ASN1CharacterString)] -> Bool
         hasDnElement el = isJust . findDnElement el
         findDnElement :: X509.DnElement -> [(OID.OID, X509.ASN1CharacterString)] -> Maybe X509.ASN1CharacterString
-        findDnElement dnElementName = fmap snd . find ((==) (OID.getObjectID dnElementName) . fst)
+        findDnElement dnElementName = lookup (OID.getObjectID dnElementName)
         findProperExtension :: OID.OID -> [X509.ExtensionRaw] -> Maybe X509.ExtensionRaw
         findProperExtension extensionOID = find ((==) extensionOID . X509.extRawOID)
         decodeAAGUID :: BS.ByteString -> Either VerificationFailure BS.ByteString
