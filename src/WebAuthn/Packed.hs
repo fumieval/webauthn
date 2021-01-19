@@ -4,15 +4,12 @@ import Data.ByteString.Lazy (fromStrict)
 import Data.ASN1.BinaryEncoding (DER(..))
 import Data.ASN1.Prim (ASN1(..))
 import Data.ASN1.Encoding (decodeASN1)
-import Data.ByteString.Char8 (unpack)
-import Data.Maybe (fromMaybe)
-import Data.Text (Text, pack)
 import Data.Maybe (isJust)
 import qualified Data.ASN1.OID as OID (OID, getObjectID)
 import Data.List (find)
 import Control.Monad (when)
 import Crypto.Hash
-import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import qualified Data.ByteArray as BA
 import qualified Data.X509 as X509
 import qualified Codec.CBOR.Term as CBOR
@@ -21,7 +18,7 @@ import qualified Data.Map as Map
 import WebAuthn.Signature
 import WebAuthn.Types
 
-data Stmt = Stmt PubKeyCredAlg ByteString (Maybe (X509.SignedExact X509.Certificate))
+data Stmt = Stmt PubKeyCredAlg BS.ByteString (Maybe (X509.SignedExact X509.Certificate))
   deriving Show
 
 decode :: CBOR.Term -> CBOR.Decoder s Stmt
@@ -43,7 +40,7 @@ decode _ = fail "Packed.decode: expected a Map"
 verify :: Stmt
   -> Maybe PublicKey
   -> AuthenticatorData
-  -> ByteString
+  -> BS.ByteString
   -> Digest SHA256
   -> Either VerificationFailure ()
 verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
@@ -61,8 +58,7 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
     where
         certMeetsCriteria :: X509.Certificate -> Either VerificationFailure ()
         certMeetsCriteria c = do
-            let maaguid = unAAGUID . aaguid <$> attestedCredentialData ad
-                (X509.Extensions mX509Exts) = X509.certExtensions c
+            let (X509.Extensions mX509Exts) = X509.certExtensions c
                 mX509Ext = mX509Exts >>= findProperExtension [1,3,6,1,4,1,45724,1,1,4]
                 dnElements = X509.getDistinguishedElements $ X509.certSubjectDN c
             adAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID provided in attested credential data") (return . unAAGUID . aaguid) $ attestedCredentialData ad
@@ -82,9 +78,7 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
         findDnElement dnElementName = fmap snd . find ((==) (OID.getObjectID dnElementName) . fst)
         findProperExtension :: OID.OID -> [X509.ExtensionRaw] -> Maybe X509.ExtensionRaw
         findProperExtension extensionOID = find ((==) extensionOID . X509.extRawOID)
-        showByteString :: Maybe ByteString -> Text
-        showByteString bs = fromMaybe "" (pack . unpack <$> bs)
-        decodeAAGUID :: ByteString -> Either VerificationFailure ByteString
+        decodeAAGUID :: BS.ByteString -> Either VerificationFailure BS.ByteString
         decodeAAGUID bs = do
             asn1 <- either (const . Left $ MalformedX509Certificate "AAGUID decoding failed") return . decodeASN1 DER $ fromStrict bs
             case asn1 of
