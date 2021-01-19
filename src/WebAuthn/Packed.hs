@@ -82,5 +82,5 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
         decodeAAGUID bs = do
             asn1 <- either (const . Left $ MalformedX509Certificate "AAGUID decoding failed") return . decodeASN1 DER $ fromStrict bs
             case asn1 of
-              [(OctetString s)] -> Right s
+              [OctetString s] -> Right s
               _ -> Left $ MalformedX509Certificate "AAGUIID in wrong format - should be OctetString"

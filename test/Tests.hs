@@ -76,50 +76,49 @@ decodePanic s = either error Prelude.id (A.eitherDecode (BL.fromStrict s))
 
 data TestPublicKeyCredential = TestPublicKeyCredential 
                                 {
-                                   clientDataJSON :: ByteString
-                                   , attestationObject :: ByteString
-                                   , challenge :: Challenge
-                                   , getChallenge :: Challenge
-                                   , getClientDataJSON :: ByteString
-                                   , getAuthenticatorData :: ByteString
-                                   , getSignature :: ByteString
-                               }
+                                clientDataJSON :: ByteString
+                                , attestationObject :: ByteString
+                                , challenge :: Challenge
+                                , getChallenge :: Challenge
+                                , getClientDataJSON :: ByteString
+                                , getAuthenticatorData :: ByteString
+                                , getSignature :: ByteString
+                                }
 
 
 androidPublicKeyCredential = TestPublicKeyCredential 
                              {
-                                clientDataJSON = androidClientDataJSON
-                                , attestationObject = androidAttestationObject
-                                , challenge = androidChallenge
-                                , getChallenge = androidGetChallenge
-                                , getClientDataJSON = androidGetClientDataJSON
-                                , getAuthenticatorData = androidGetAuthenticatorData
-                                , getSignature = androidGetSignature
+                             clientDataJSON = androidClientDataJSON
+                             , attestationObject = androidAttestationObject
+                             , challenge = androidChallenge
+                             , getChallenge = androidGetChallenge
+                             , getClientDataJSON = androidGetClientDataJSON
+                             , getAuthenticatorData = androidGetAuthenticatorData
+                             , getSignature = androidGetSignature
                              }
 
 packedSelfAttestedKeyCredential = TestPublicKeyCredential 
                               {
-                                  clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSkhxcVRQWF9oQkw1bHlDZE9DQzRMNTVzcm9LbXFMX0RDemlOeWx6MXF5dyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
-                                , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZyZjc2lnWEYwRAIgaAVCWvaUJo0NBq_c1yr7R9jXN-G8MqqIOVhswsTX4K0CIFZul9oOTdWwDx4WAb3cgPTTjWzXSSxcjseS33OVqhgWaGF1dGhEYXRhWNUs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUVgAZ6yrc4AAjW8xgpkiwsl8fBVAwBRAft9ACeHPR6QCu6Clp5otBmdIyMGV6w1emT--vpR_JpIKPJdIkNLOjzoLqd-z_j3vKvLCB4pQAwccqPF56HKs4h8DsrEuG0mMx5jJz_9ndh1pQECAyYgASFYIFgD8QsPYGMaq49F7-JWJowfVaxeiFzJUXp2k8nvrRpUIlggyGWqdGOBLZgO61mPMEncHjTmBxFPWzqKbUlBvT1fhRg"
-                                , challenge = Challenge (BS.decodeLenient "JHqqTPX_hBL5lyCdOCC4L55sroKmqL_DCziNylz1qyw")
-                                , getChallenge = Challenge (BS.decodeLenient "VXrK0ywwsYO2k6c52md-Lg2JDOmxrkGMli_4MHJcKaM")
-                                , getClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVlhySzB5d3dzWU8yazZjNTJtZC1MZzJKRE9teHJrR01saV80TUhKY0thTSIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0"
-                                , getAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEFYAGfAg"
-                                , getSignature = BS.decodeLenient "MEYCIQDteZqnEublzIw5AgnOzu5sd7b387GitIHbjNSXFFoFxgIhAP4IFIiyweG__D3VOBSnvneuK794RuGoUNasXhQNe0gk"
-        
-    }
+                              clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSkhxcVRQWF9oQkw1bHlDZE9DQzRMNTVzcm9LbXFMX0RDemlOeWx6MXF5dyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
+                              , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZyZjc2lnWEYwRAIgaAVCWvaUJo0NBq_c1yr7R9jXN-G8MqqIOVhswsTX4K0CIFZul9oOTdWwDx4WAb3cgPTTjWzXSSxcjseS33OVqhgWaGF1dGhEYXRhWNUs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUVgAZ6yrc4AAjW8xgpkiwsl8fBVAwBRAft9ACeHPR6QCu6Clp5otBmdIyMGV6w1emT--vpR_JpIKPJdIkNLOjzoLqd-z_j3vKvLCB4pQAwccqPF56HKs4h8DsrEuG0mMx5jJz_9ndh1pQECAyYgASFYIFgD8QsPYGMaq49F7-JWJowfVaxeiFzJUXp2k8nvrRpUIlggyGWqdGOBLZgO61mPMEncHjTmBxFPWzqKbUlBvT1fhRg"
+                              , challenge = Challenge (BS.decodeLenient "JHqqTPX_hBL5lyCdOCC4L55sroKmqL_DCziNylz1qyw")
+                              , getChallenge = Challenge (BS.decodeLenient "VXrK0ywwsYO2k6c52md-Lg2JDOmxrkGMli_4MHJcKaM")
+                              , getClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVlhySzB5d3dzWU8yazZjNTJtZC1MZzJKRE9teHJrR01saV80TUhKY0thTSIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0"
+                              , getAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEFYAGfAg"
+                              , getSignature = BS.decodeLenient "MEYCIQDteZqnEublzIw5AgnOzu5sd7b387GitIHbjNSXFFoFxgIhAP4IFIiyweG__D3VOBSnvneuK794RuGoUNasXhQNe0gk"
+                              }
 
 packedSelfAttestedTest = genericCredentialTest "Packed self attested test" packedSelfAttestedKeyCredential
 
 packedNonSelfAttestedKeyCredential = TestPublicKeyCredential 
                               {
-                                  clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiTU1jVUFkWkJ2STRENktNYldjZW44bTNNRElCRWVWQWxkalBwcjYzZWFJbyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
-                                , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSjY2FsZyZjc2lnWEcwRQIge9MVIqCg80CbXoD2m6Hu4J6EKztfia76dtOoAeDUejQCIQCQwLbwVYoiYsAcOf8iigzbixDBiUAYJpUCIoa-XXvuYmN4NWOBWQLBMIICvTCCAaWgAwIBAgIEGKxGwDANBgkqhkiG9w0BAQsFADAuMSwwKgYDVQQDEyNZdWJpY28gVTJGIFJvb3QgQ0EgU2VyaWFsIDQ1NzIwMDYzMTAgFw0xNDA4MDEwMDAwMDBaGA8yMDUwMDkwNDAwMDAwMFowbjELMAkGA1UEBhMCU0UxEjAQBgNVBAoMCVl1YmljbyBBQjEiMCAGA1UECwwZQXV0aGVudGljYXRvciBBdHRlc3RhdGlvbjEnMCUGA1UEAwweWXViaWNvIFUyRiBFRSBTZXJpYWwgNDEzOTQzNDg4MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEeeo7LHxJcBBiIwzSP-tg5SkxcdSD8QC-hZ1rD4OXAwG1Rs3Ubs_K4-PzD4Hp7WK9Jo1MHr03s7y-kqjCrutOOqNsMGowIgYJKwYBBAGCxAoCBBUxLjMuNi4xLjQuMS40MTQ4Mi4xLjcwEwYLKwYBBAGC5RwCAQEEBAMCBSAwIQYLKwYBBAGC5RwBAQQEEgQQy2lIHo_3QDmT7AonKaFUqDAMBgNVHRMBAf8EAjAAMA0GCSqGSIb3DQEBCwUAA4IBAQCXnQOX2GD4LuFdMRx5brr7Ivqn4ITZurTGG7tX8-a0wYpIN7hcPE7b5IND9Nal2bHO2orh_tSRKSFzBY5e4cvda9rAdVfGoOjTaCW6FZ5_ta2M2vgEhoz5Do8fiuoXwBa1XCp61JfIlPtx11PXm5pIS2w3bXI7mY0uHUMGvxAzta74zKXLslaLaSQibSKjWKt9h-SsXy4JGqcVefOlaQlJfXL1Tga6wcO0QTu6Xq-Uw7ZPNPnrpBrLauKDd202RlN4SP7ohL3d9bG6V5hUz_3OusNEBZUn5W3VmPj1ZnFavkMB3RkRMOa58MZAORJT4imAPzrvJ0vtv94_y71C6tZ5aGF1dGhEYXRhWMQs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUUAAAAuy2lIHo_3QDmT7AonKaFUqABAPjPqie67O5ZBLiBEWi1uF8ueqxifIu5txG8qQ82HiribGY2F99HPJ_ZTgRbEZCVySxy0Xbd-tiUzyEwmJQsiNqUBAgMmIAEhWCAiZN75DKsRFIWYKExiHA_ZpKIJGbRlL2JYE6iw9x1OGSJYILwa9HpPBuZ4S4BfT4wigrSzs_V6m47z0A1wsetLUwl1"
-                                , challenge = Challenge (BS.decodeLenient "MMcUAdZBvI4D6KMbWcen8m3MDIBEeVAldjPpr63eaIo")
-                                , getChallenge = Challenge (BS.decodeLenient "Yb5eG9OA4jPLlrkGIMhedXD76XHqJhddTAdeHXHBRl8")
-                                , getClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWWI1ZUc5T0E0alBMbHJrR0lNaGVkWEQ3NlhIcUpoZGRUQWRlSFhIQlJsOCIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
-                                , getAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEFAAAALw"
-                                , getSignature = BS.decodeLenient "MEUCIAUiSZx7SeFuqLS7nCtfEwgHM7zfhJQTx2AUf6qW0P0TAiEAh-UwgffnlRaz5cjYeGirABt2FTcgyiuLuv-NOpdJQf8"
+                              clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiTU1jVUFkWkJ2STRENktNYldjZW44bTNNRElCRWVWQWxkalBwcjYzZWFJbyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
+                              , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSjY2FsZyZjc2lnWEcwRQIge9MVIqCg80CbXoD2m6Hu4J6EKztfia76dtOoAeDUejQCIQCQwLbwVYoiYsAcOf8iigzbixDBiUAYJpUCIoa-XXvuYmN4NWOBWQLBMIICvTCCAaWgAwIBAgIEGKxGwDANBgkqhkiG9w0BAQsFADAuMSwwKgYDVQQDEyNZdWJpY28gVTJGIFJvb3QgQ0EgU2VyaWFsIDQ1NzIwMDYzMTAgFw0xNDA4MDEwMDAwMDBaGA8yMDUwMDkwNDAwMDAwMFowbjELMAkGA1UEBhMCU0UxEjAQBgNVBAoMCVl1YmljbyBBQjEiMCAGA1UECwwZQXV0aGVudGljYXRvciBBdHRlc3RhdGlvbjEnMCUGA1UEAwweWXViaWNvIFUyRiBFRSBTZXJpYWwgNDEzOTQzNDg4MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEeeo7LHxJcBBiIwzSP-tg5SkxcdSD8QC-hZ1rD4OXAwG1Rs3Ubs_K4-PzD4Hp7WK9Jo1MHr03s7y-kqjCrutOOqNsMGowIgYJKwYBBAGCxAoCBBUxLjMuNi4xLjQuMS40MTQ4Mi4xLjcwEwYLKwYBBAGC5RwCAQEEBAMCBSAwIQYLKwYBBAGC5RwBAQQEEgQQy2lIHo_3QDmT7AonKaFUqDAMBgNVHRMBAf8EAjAAMA0GCSqGSIb3DQEBCwUAA4IBAQCXnQOX2GD4LuFdMRx5brr7Ivqn4ITZurTGG7tX8-a0wYpIN7hcPE7b5IND9Nal2bHO2orh_tSRKSFzBY5e4cvda9rAdVfGoOjTaCW6FZ5_ta2M2vgEhoz5Do8fiuoXwBa1XCp61JfIlPtx11PXm5pIS2w3bXI7mY0uHUMGvxAzta74zKXLslaLaSQibSKjWKt9h-SsXy4JGqcVefOlaQlJfXL1Tga6wcO0QTu6Xq-Uw7ZPNPnrpBrLauKDd202RlN4SP7ohL3d9bG6V5hUz_3OusNEBZUn5W3VmPj1ZnFavkMB3RkRMOa58MZAORJT4imAPzrvJ0vtv94_y71C6tZ5aGF1dGhEYXRhWMQs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUUAAAAuy2lIHo_3QDmT7AonKaFUqABAPjPqie67O5ZBLiBEWi1uF8ueqxifIu5txG8qQ82HiribGY2F99HPJ_ZTgRbEZCVySxy0Xbd-tiUzyEwmJQsiNqUBAgMmIAEhWCAiZN75DKsRFIWYKExiHA_ZpKIJGbRlL2JYE6iw9x1OGSJYILwa9HpPBuZ4S4BfT4wigrSzs_V6m47z0A1wsetLUwl1"
+                              , challenge = Challenge (BS.decodeLenient "MMcUAdZBvI4D6KMbWcen8m3MDIBEeVAldjPpr63eaIo")
+                              , getChallenge = Challenge (BS.decodeLenient "Yb5eG9OA4jPLlrkGIMhedXD76XHqJhddTAdeHXHBRl8")
+                              , getClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWWI1ZUc5T0E0alBMbHJrR0lNaGVkWEQ3NlhIcUpoZGRUQWRlSFhIQlJsOCIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
+                              , getAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEFAAAALw"
+                              , getSignature = BS.decodeLenient "MEUCIAUiSZx7SeFuqLS7nCtfEwgHM7zfhJQTx2AUf6qW0P0TAiEAh-UwgffnlRaz5cjYeGirABt2FTcgyiuLuv-NOpdJQf8"
                               }
 
 packedNonSelfAttestedTest = genericCredentialTest "Packed non-self attested test" packedNonSelfAttestedKeyCredential
