@@ -37,6 +37,7 @@ module WebAuthn.Types (
   , AuthenticatorSelection (..)
   , UserVerification (..)
   , PubKeyCredAlg (..)
+  , pubKeyCredAlgFromInt
   ) where
 
 import Prelude hiding (fail)
@@ -364,6 +365,12 @@ instance ToJSON PubKeyCredAlg where
   toJSON RS256 = Number (-257)
   toJSON PS256 = Number (-37)
   
+pubKeyCredAlgFromInt :: Int -> Maybe PubKeyCredAlg
+pubKeyCredAlgFromInt = \case -7 -> Just ES256
+                             -257 -> Just RS256
+                             -37 -> Just PS256
+                             _ -> Nothing
+
 data PubKeyCredParam = PubKeyCredParam {
   tipe :: PublicKeyCredentialType
   , alg :: PubKeyCredAlg

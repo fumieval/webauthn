@@ -158,7 +158,7 @@ registerCredential opts cs challenge (RelyingParty rpOrigin rpId _ _) tbi verifi
   -- TODO: extensions here
   case (attStmt attestationObject) of
     AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
-    AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey (authData attestationObject) clientDataHash
+    AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey ad (authData attestationObject) clientDataHash
     AF_TPM s -> hoistEither $ TPM.verify s ad (authData attestationObject) clientDataHash
     AF_AndroidSafetyNet s -> Android.verify cs s (authData attestationObject) clientDataHash
     AF_None -> pure ()
