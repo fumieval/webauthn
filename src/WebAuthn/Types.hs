@@ -111,12 +111,13 @@ data CollectedClientData = CollectedClientData
   , clientOrigin :: Origin
   , clientTokenBinding :: TokenBinding
   }
+
 instance FromJSON CollectedClientData where
   parseJSON = withObject "CollectedClientData" $ \obj -> CollectedClientData
     <$> obj .: "type"
     <*> obj .: "challenge"
     <*> obj .: "origin"
--- | state of the Token Binding protocol (unsupported)
+-- state of the Token Binding protocol (unsupported)
     <*> fmap (maybe TokenBindingUnsupported Prelude.id) (obj .:? "tokenBinding")
 
 data TokenBinding = TokenBindingUnsupported
