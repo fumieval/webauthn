@@ -118,6 +118,7 @@ decodeAttestation = do
     "packed" -> AF_Packed <$> Packed.decode stmtTerm
     "tpm" -> AF_TPM <$> TPM.decode stmtTerm
     "android-safetynet" -> AF_AndroidSafetyNet <$> Android.decode stmtTerm
+    "none" -> pure AF_None
     _ -> fail $ "decodeAttestation: Unsupported format: " ++ show fmt
   CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
   return (AttestationObject fmt stmt adRaw)
@@ -135,7 +136,7 @@ encodeAttestation attestationObject = CBOR.encodeMapLen 3
       AF_TPM _ -> CBOR.encodeString "tpm"
       AF_AndroidKey -> CBOR.encodeString "android-key"
       AF_AndroidSafetyNet _ -> CBOR.encodeString "android-safetynet"
-      AF_None -> CBOR.encodeString ""
+      AF_None -> CBOR.encodeString "none"
 
 -- | 7.1. Registering a New Credential
 registerCredential :: MonadIO m => PublicKeyCredentialCreationOptions
