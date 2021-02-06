@@ -42,6 +42,7 @@ androidTests = testGroup "WebAuthn Tests"
     androidCredentialTest
     , packedSelfAttestedTest
     , packedNonSelfAttestedTest
+    , fidoU2FAttestedTest
     , registrationTest
   ]
 
@@ -122,6 +123,20 @@ packedNonSelfAttestedKeyCredential = TestPublicKeyCredential
                               }
 
 packedNonSelfAttestedTest = genericCredentialTest "Packed non-self attested test" packedNonSelfAttestedKeyCredential
+
+fidoU2FAttestedKeyCredential = TestPublicKeyCredential 
+                              {
+                                  clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiVHF5dWZTNmJCam5obk5sT09BcWN3X2tfcW9DZVhrdy1VbkQ2X1QxTEZ6WSIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
+                                , attestationObject = BS.decodeLenient "o2NmbXRoZmlkby11MmZnYXR0U3RtdKJjc2lnWEcwRQIgLalQZ_wPQbHRQJWvkSb9pMwykJTIglVyO9tQqJBdWeACIQDW9PpXo-7gcl8f8MOvcQZ2a-BV0NDtsKysznwF17hTmmN4NWOBWQHiMIIB3jCCAYCgAwIBAgIBATANBgkqhkiG9w0BAQsFADBgMQswCQYDVQQGEwJVUzERMA8GA1UECgwIQ2hyb21pdW0xIjAgBgNVBAsMGUF1dGhlbnRpY2F0b3IgQXR0ZXN0YXRpb24xGjAYBgNVBAMMEUJhdGNoIENlcnRpZmljYXRlMB4XDTE3MDcxNDAyNDAwMFoXDTQxMDExMDE1MDgwNVowYDELMAkGA1UEBhMCVVMxETAPBgNVBAoMCENocm9taXVtMSIwIAYDVQQLDBlBdXRoZW50aWNhdG9yIEF0dGVzdGF0aW9uMRowGAYDVQQDDBFCYXRjaCBDZXJ0aWZpY2F0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABI1hfmXJUI5kvMVnOsgqZ5naPBRGaCwljEY__99Y39L6Pmw3i1PXlcSk3_tBme3Xhi8jq68CA7S4kRugVpmU4QGjKDAmMBMGCysGAQQBguUcAgEBBAQDAgUgMA8GA1UdEwEB_wQFMAMBAQAwDQYJKoZIhvcNAQELBQADSQAwRgIhALzf9AI7ncZCUGONkRJg1j0giitNVEtql2-DNLkUcAKNAiEAl2FZKfyv8wP6gq8a15Zwvb0IuqhbW6Oa3ChynC2bc-JoYXV0aERhdGFYpCzXk8-gtBjLvw6oUiKGB9npezM9TbCkEBd2ava7jHVRQQAAAAAAAAAAAAAAAAAAAAAAAAAAACAeEV8OookaEAnZsZ6sTBQd34n7FG-UChiAg_h4Wds73qUBAgMmIAEhWCAxZCF_UplKr9yfSrWtQbCeHBu8kmi9wJpIldWlT3fFMiJYIMHLS8tIUgpZgxb706EC_Hx6P6qoeBZHKVhOtc80uLbz"
+                                , challenge = Challenge (BS.decodeLenient "TqyufS6bBjnhnNlOOAqcw_k_qoCeXkw-UnD6_T1LFzY")
+                                , getChallenge = Challenge (BS.decodeLenient "FKo-YOqdA16wn5PtyGCF5kcW5Cbq-kdJH47vhEYVEHA")
+                                , getClientDataJSON = BS.decodeLenient "FKo-YOqdA16wn5PtyGCF5kcW5Cbq-kdJH47vhEYVEHA"
+                                , getAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQF3Zq9ruMdVEBAAAAAg"
+                                , getSignature = BS.decodeLenient "MEYCIQDhsVWAb0QLCdfLpjfWSv1jDQXTlL-eR0jqxpY09UsO7QIhALG5c5ORMNAyRR2R7NcOWDLHKKmV9KZM5S1miiVhYmZ5"
+                              }
+
+fidoU2FAttestedTest = genericCredentialTest "FIDOU2F test" packedNonSelfAttestedKeyCredential
+
 
 genericCredentialTest :: String -> TestPublicKeyCredential -> TestTree
 genericCredentialTest name TestPublicKeyCredential{..} = testCaseSteps name $ \step -> do
