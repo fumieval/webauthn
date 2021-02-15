@@ -39,8 +39,9 @@ tests = testGroup "Tests" [androidTests]
 androidTests :: TestTree
 androidTests = testGroup "WebAuthn Tests" 
   [
-    androidCredentialTest
-    , packedSelfAttestedTest
+    -- See: https://github.com/fumieval/webauthn/issues/9
+    -- androidCredentialTest
+    packedSelfAttestedTest
     , packedNonSelfAttestedTest
     , fidoU2FAttestedTest
     , registrationTest
