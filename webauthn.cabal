@@ -52,10 +52,6 @@ library
     , x509-validation   >=1.6  && <1.7
 
   ghc-options:        -Wall
-  
-  default-extensions:
-    DuplicateRecordFields
-    OverloadedStrings
 
 test-suite test-webauthn
   import:             base-common
@@ -69,7 +65,3 @@ test-suite test-webauthn
     , tasty-hunit    >=0.10 && <0.11
     , uri-bytestring >=0.3  && <0.4
     , webauthn
-
-  default-extensions:
-    OverloadedStrings
-    QuasiQuotes

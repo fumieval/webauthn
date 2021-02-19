@@ -1,4 +1,5 @@
- {-# LANGUAGE OverloadedStrings #-} 
+{-# LANGUAGE OverloadedStrings #-} 
+{-# LANGUAGE DuplicateRecordFields #-}
 module WebAuthn.AndroidSafetyNet (
   decode,
   verify
