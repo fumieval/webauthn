@@ -1,4 +1,4 @@
-name: ci
+name: Haskell CI
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-18.04, macos-10.15]
-        ghc: ["8.6", "8.8", "8.10", "9.0"]
+        ghc: ["8.8", "8.10"]
         cabal: ["3.2"]
 
     steps:

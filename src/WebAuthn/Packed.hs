@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module WebAuthn.Packed where
 
 import Data.ByteString.Lazy (fromStrict)

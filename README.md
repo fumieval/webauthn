@@ -1,5 +1,7 @@
 A WebAuthn verification library for relying parties.
 
+[![ci](https://github.com/fumieval/webauthn/actions/workflows/haskell.yml/badge.svg)](https://github.com/fumieval/webauthn/actions/workflows/haskell.yml)
+
 Demo
 ----
 
