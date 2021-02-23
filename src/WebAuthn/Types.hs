@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE RecordWildCards #-}
 module WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)
@@ -33,8 +34,8 @@ module WebAuthn.Types (
   , PublicKeyCredentialDescriptor(..)
   , AuthenticatorTransport(..)
   , PublicKeyCredentialType(..)
-  , PublicKeyCredentialCreationOptions(..)
-  , PubKeyCredParam (..)
+  , CredentialCreationOptions(..)
+  , defaultCredentialCreationOptions
   , Attestation (..)
   , Extensions (..)
   , AuthenticatorSelection (..)
@@ -64,6 +65,7 @@ import qualified Data.ByteString.Base64.URL as Base64
 import Data.ByteString.Base16 as Base16 (decodeLenient, encode )
 import qualified Data.Hashable as H
 import qualified Data.Map as Map
+import qualified Data.ByteString.Char8 as B8
 import Data.List (stripPrefix)
 import Data.Text (Text)
 import Data.Text.Encoding ( decodeUtf8, encodeUtf8 )
@@ -75,16 +77,16 @@ import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail ( MonadFail(fail) )
-import GHC.Generics (Generic)
 import qualified Data.X509 as X509
 import Data.Aeson.Types (Pair, typeMismatch)
 import Data.Char ( toLower, toUpper )
 import Data.ByteArray (ByteArrayAccess)
 import Data.Aeson (SumEncoding(UntaggedValue))
-import Data.List.NonEmpty
+import Data.List.NonEmpty as NE
 import Data.Aeson (genericToJSON)
 import qualified Data.Aeson as Aeson
 import Deriving.Aeson
+import Data.String
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -101,7 +103,13 @@ instance FromJSON Base64ByteString where
 
 -- | 13.1. Cryptographic Challenges
 newtype Challenge = Challenge { rawChallenge :: ByteString }
-  deriving (Show, Eq, Ord, H.Hashable, CBOR.Serialise)
+  deriving (Eq, Ord, H.Hashable, CBOR.Serialise)
+
+instance IsString Challenge where
+  fromString = Challenge . Base64.decodeLenient . B8.pack
+
+instance Show Challenge where
+  show = show . Base64.encode . rawChallenge
 
 instance ToJSON Challenge where
   toJSON = toJSON . decodeUtf8 . Base64.encode . rawChallenge
@@ -278,8 +286,8 @@ maybeToCBORString lbl (Just txt) = [(lbl, CBOR.TString txt)]
 
 data VerificationFailure
   = InvalidType
-  | MismatchedChallenge
-  | MismatchedOrigin
+  | MismatchedChallenge Challenge Challenge
+  | MismatchedOrigin Origin Origin
   | UnexpectedPresenceOfTokenBinding
   | MismatchedTokenBinding
   | JSONDecodeError String
@@ -350,14 +358,14 @@ instance ToJSON UserVerification where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
-data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
-  challenge :: Base64ByteString
+data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions
+  { challenge :: Challenge
   , timeout :: Maybe Integer
   , rpId :: Maybe Text
   , allowCredentials ::Maybe (NonEmpty PublicKeyCredentialDescriptor)
   , userVerification :: Maybe UserVerification
   -- extensions omitted as support is minimal https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialRequestOptions/extensions
-} deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialRequestOptions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
@@ -378,12 +386,6 @@ pubKeyCredAlgFromInt = \case -7 -> Just ES256
                              -257 -> Just RS256
                              -37 -> Just PS256
                              _ -> Nothing
-
-data PubKeyCredParam = PubKeyCredParam
-  { pkcpType :: PublicKeyCredentialType
-  , pkcpAlg :: PubKeyCredAlg
-  } deriving (Show, Eq, Generic)
-  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "pkcp", CamelToSnake)] PubKeyCredParam
 
 data Attestation = None | Direct | Indirect deriving (Eq, Show, Generic)
 
@@ -435,19 +437,33 @@ instance ToJSON AuthenticatorSelection where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
-data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions {
-  rp :: RelyingParty
-  , challenge :: Base64ByteString
-  , user :: User
-  , pubKeyCredParams :: NonEmpty PubKeyCredParam
-  , timeout :: Maybe Integer
-  , attestation :: Maybe Attestation
-  , extensions :: Maybe Extensions
-  , authenticatorSelection :: Maybe AuthenticatorSelection
-  , excludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
-} deriving (Eq, Show, Generic)
+data CredentialCreationOptions = CredentialCreationOptions
+  { ccoRelyingParty :: RelyingParty
+  , ccoChallenge :: Challenge
+  , ccoUser :: User
+  , ccoCredParams :: NonEmpty PubKeyCredAlg
+  , ccoTimeout :: Maybe Integer
+  , ccoAttestation :: Maybe Attestation
+  , ccoExtensions :: Maybe Extensions
+  , ccoAuthenticatorSelection :: Maybe AuthenticatorSelection
+  , ccoExcludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
+  , ccoTokenBindingID :: Maybe Text
+  , ccoRequireUserVerification :: Bool
+  } deriving (Eq, Show, Generic)
 
-instance ToJSON PublicKeyCredentialCreationOptions where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
-
+defaultCredentialCreationOptions
+  :: RelyingParty
+  -> Challenge
+  -> User
+  -> CredentialCreationOptions
+defaultCredentialCreationOptions ccoRelyingParty ccoChallenge ccoUser = CredentialCreationOptions
+  { ccoTimeout = Nothing
+  , ccoCredParams = ES256 NE.:| []
+  , ccoAttestation = Nothing
+  , ccoExtensions = Nothing
+  , ccoAuthenticatorSelection = Nothing
+  , ccoExcludeCredentials = Nothing
+  , ccoRequireUserVerification = False
+  , ccoTokenBindingID = Nothing
+  , ..
+  }
