@@ -62,6 +62,7 @@ import qualified Data.ByteString.Base64.URL as Base64
 import Data.ByteString.Base16 as Base16 (decodeLenient, encode )
 import qualified Data.Hashable as H
 import qualified Data.Map as Map
+import Data.List (stripPrefix)
 import Data.Text (Text)
 import Data.Text.Encoding ( decodeUtf8, encodeUtf8 )
 import qualified Data.Text as T
@@ -80,6 +81,7 @@ import Data.ByteArray (ByteArrayAccess)
 import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.List.NonEmpty
 import Data.Aeson (genericToJSON)
+import qualified Data.Aeson as Aeson
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -234,15 +236,22 @@ instance J.FromJSON AttestedCredentialData
 instance J.ToJSON AttestedCredentialData
 
 -- | 5.4.3. User Account Parameters for Credential Generation
-data User = User { 
-  id :: Base64ByteString
-  , name :: Maybe T.Text
-  , displayName :: Maybe T.Text
+data User = User
+  { userId :: Base64ByteString
+  , userName :: Maybe T.Text
+  , userDisplayName :: Maybe T.Text
 } deriving (Generic, Show, Eq)
 
+userJSONOptions :: Aeson.Options
+userJSONOptions = defaultOptions
+  { omitNothingFields = True
+  , fieldLabelModifier = \str -> case stripPrefix "user" str of
+    Just (c : cs) -> toLower c : cs
+    _ -> error "impossible" }
+
 instance ToJSON User where
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True}
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+  toJSON = genericToJSON userJSONOptions
+  toEncoding = genericToEncoding userJSONOptions
 
 instance CBOR.Serialise User where
   encode (User i n d) = CBOR.encode $ Map.fromList
