@@ -2,8 +2,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DerivingVia #-}
 module WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)
@@ -82,6 +84,7 @@ import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.List.NonEmpty
 import Data.Aeson (genericToJSON)
 import qualified Data.Aeson as Aeson
+import Deriving.Aeson
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -240,7 +243,7 @@ data User = User
   { userId :: Base64ByteString
   , userName :: Maybe T.Text
   , userDisplayName :: Maybe T.Text
-} deriving (Generic, Show, Eq)
+  } deriving (Generic, Show, Eq)
 
 userJSONOptions :: Aeson.Options
 userJSONOptions = defaultOptions
@@ -294,28 +297,28 @@ data VerificationFailure
   | NonceCheckFailure
   deriving Show
 
-data AndroidSafetyNet = AndroidSafetyNet {
-  timestampMs :: Integer
+data AndroidSafetyNet = AndroidSafetyNet
+  { timestampMs :: Integer
   , nonce :: [Char]
   , apkPackageName :: Text
   , apkCertificateDigestSha256 :: [Text]
   , ctsProfileMatch :: Bool
   , basicIntegrity :: Bool
-} deriving (Show, Generic)
+  } deriving (Show, Generic)
 
 instance  FromJSON AndroidSafetyNet
 
-data StmtSafetyNet = StmtSafetyNet {
-  header :: Base64ByteString
+data StmtSafetyNet = StmtSafetyNet
+  { header :: Base64ByteString
   , payload :: Base64ByteString
   , signature :: ByteString
   , certificates :: X509.CertificateChain
-} deriving Show
+  } deriving Show
 
-data JWTHeader = JWTHeader {
-  alg :: Text
+data JWTHeader = JWTHeader
+  { alg :: Text
   , x5c :: [Text]
-} deriving (Show, Generic)
+  } deriving (Show, Generic)
 
 instance FromJSON JWTHeader
 
@@ -334,18 +337,12 @@ instance ToJSON AuthenticatorTransport where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
-data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
-  tipe :: PublicKeyCredentialType
-  , id :: Base64ByteString
-  , transports :: Maybe (NonEmpty AuthenticatorTransport)
-} deriving (Eq, Show, Generic)
-
-instance ToJSON PublicKeyCredentialDescriptor where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
-
-mapTipe :: String -> String
-mapTipe str = if str == "tipe" then "type" else str 
+data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
+  { pkcdType :: PublicKeyCredentialType
+  , pkcdId :: Base64ByteString
+  , pkcdTransports :: Maybe (NonEmpty AuthenticatorTransport)
+  } deriving (Eq, Show, Generic)
+  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "pkcd", CamelToSnake), OmitNothingFields] PublicKeyCredentialDescriptor
 
 data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, Generic)
 
@@ -382,14 +379,11 @@ pubKeyCredAlgFromInt = \case -7 -> Just ES256
                              -37 -> Just PS256
                              _ -> Nothing
 
-data PubKeyCredParam = PubKeyCredParam {
-  tipe :: PublicKeyCredentialType
-  , alg :: PubKeyCredAlg
-} deriving (Show, Eq, Generic)
-
-instance ToJSON PubKeyCredParam where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
+data PubKeyCredParam = PubKeyCredParam
+  { pkcpType :: PublicKeyCredentialType
+  , pkcpAlg :: PubKeyCredAlg
+  } deriving (Show, Eq, Generic)
+  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "pkcp", CamelToSnake)] PubKeyCredParam
 
 data Attestation = None | Direct | Indirect deriving (Eq, Show, Generic)
 

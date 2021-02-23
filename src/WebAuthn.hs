@@ -196,7 +196,7 @@ registerCredential opts cs challenge (RelyingParty rpOrigin rpId _ _) tbi verifi
       case pubKey of
         Just k -> do
           parsedPubKey <- either throwE return $ parsePublicKey k
-          let hasProperAlg pubKeyParam = hasMatchingAlg parsedPubKey $ alg (pubKeyParam :: PubKeyCredParam)
+          let hasProperAlg pubKeyParam = hasMatchingAlg parsedPubKey $ pkcpAlg (pubKeyParam :: PubKeyCredParam)
           when (not . any hasProperAlg $ pubKeyCredParams opts) $ throwE MalformedAuthenticatorData
           return $ Just parsedPubKey
         -- non present public key will fail anyway or the fmt == 'none'
