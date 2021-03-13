@@ -44,7 +44,7 @@ module WebAuthn.Types (
 
 import Prelude hiding (fail)
 import Data.Aeson as J
-    (Value(..),  
+    (Value(..),
       (.:),
       (.:?),
       withObject,
@@ -78,10 +78,10 @@ import qualified Data.X509 as X509
 import Data.Aeson.Types (Pair, typeMismatch)
 import Data.Char ( toLower, toUpper )
 import Data.ByteArray (ByteArrayAccess)
-import Data.Aeson (SumEncoding(UntaggedValue))
+import Data.Aeson
+    ( SumEncoding(UntaggedValue), genericToJSON, genericParseJSON )
 import Data.List.NonEmpty
-import Data.Aeson (genericToJSON)
-import Data.Aeson (genericParseJSON)
+import Control.Error (fromMaybe)
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -121,8 +121,8 @@ instance FromJSON CollectedClientData where
     <$> obj .: "type"
     <*> obj .: "challenge"
     <*> obj .: "origin"
--- | state of the Token Binding protocol (unsupported)
-    <*> fmap (maybe TokenBindingUnsupported Prelude.id) (obj .:? "tokenBinding")
+    <*> fmap (fromMaybe TokenBindingUnsupported) (obj .:? "tokenBinding") -- state of the Token Binding protocol (unsupported)
+
 
 data TokenBinding = TokenBindingUnsupported
   | TokenBindingSupported
@@ -165,7 +165,7 @@ data RelyingParty = RelyingParty
   deriving (Show, Eq, Generic)
 
 instance ToJSON RelyingParty where
-  toJSON rpo = object (["id" .= toJSON (rpId (rpo :: RelyingParty))] 
+  toJSON rpo = object (["id" .= toJSON (rpId (rpo :: RelyingParty))]
     <> maybeToPair "icon" (icon rpo)
     <> [ "name" .= name (rpo :: RelyingParty)])
 
@@ -237,7 +237,7 @@ instance J.FromJSON AttestedCredentialData
 instance J.ToJSON AttestedCredentialData
 
 -- | 5.4.3. User Account Parameters for Credential Generation
-data User = User 
+data User = User
   { id :: Text
   , name :: T.Text
   , displayName ::  T.Text
@@ -249,7 +249,7 @@ instance ToJSON User where
 
 instance CBOR.Serialise User where
   encode (User i n d) = CBOR.encode $ Map.fromList
-    ([("id" :: Text, CBOR.TBytes (encodeUtf8 i))] 
+    ([("id" :: Text, CBOR.TBytes (encodeUtf8 i))]
       <> [("name" :: Text, CBOR.TString n)]
       <> [("displayName" :: Text, CBOR.TString d)])
   decode = do
@@ -364,7 +364,7 @@ instance ToJSON PubKeyCredAlg where
   toJSON ES256 = Number (-7)
   toJSON RS256 = Number (-257)
   toJSON PS256 = Number (-37)
-  
+
 data PubKeyCredParam = PubKeyCredParam {
   tipe :: PublicKeyCredentialType
   , alg :: PubKeyCredAlg
@@ -412,7 +412,7 @@ data AuthenticatorAttachment = Platform | CrossPlatform deriving (Eq, Show, Gene
 
 instance ToJSON AuthenticatorAttachment where
   toJSON Platform = String "platform"
-  toJSON CrossPlatform = String "cross-platform" 
+  toJSON CrossPlatform = String "cross-platform"
 
 data AuthenticatorSelection = AuthenticatorSelection {
   authenticatorAttachment :: Maybe AuthenticatorAttachment

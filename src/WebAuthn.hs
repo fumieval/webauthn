@@ -45,7 +45,6 @@ import qualified Data.ByteArray as BA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as Map
-import Data.Text (Text)
 import Crypto.Random
 import Crypto.Hash
 import qualified Codec.CBOR.Term as CBOR
@@ -62,7 +61,7 @@ import qualified WebAuthn.Packed as Packed
 import qualified WebAuthn.AndroidSafetyNet as Android
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
-import Data.Text (pack)
+import Data.Text (pack, Text)
 import qualified Data.X509.CertificateStore as X509
 import Data.Bifunctor (first)
 import Data.Text.Encoding (encodeUtf8)
