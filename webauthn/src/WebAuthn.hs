@@ -96,11 +96,11 @@ parseAuthenticatorData = do
 
 -- | Attestation (6.4) provided by authenticators
 
-data AttestationObject = AttestationObject {
-  fmt :: Text
+data AttestationObject = AttestationObject
+  { fmt :: Text
   , attStmt :: AttestationStatement
   , authData :: ByteString
-}
+  }
 
 data AttestationStatement = AF_Packed Packed.Stmt
   | AF_TPM TPM.Stmt

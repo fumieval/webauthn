@@ -1,5 +1,5 @@
 packages:
-  ./
+  ./webauthn
   ./wai-middleware-webauthn/
   ./wai-middleware-webauthn/demo/
 
