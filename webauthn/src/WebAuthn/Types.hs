@@ -85,7 +85,7 @@ import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.List.NonEmpty as NE
 import Data.Aeson (genericToJSON)
 import qualified Data.Aeson as Aeson
-import Deriving.Aeson
+import GHC.Generics (Generic)
 import Data.String
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
@@ -350,7 +350,14 @@ data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
   , pkcdId :: Base64ByteString
   , pkcdTransports :: Maybe (NonEmpty AuthenticatorTransport)
   } deriving (Eq, Show, Generic)
-  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "pkcd", CamelToSnake), OmitNothingFields] PublicKeyCredentialDescriptor
+
+instance ToJSON PublicKeyCredentialDescriptor where
+  toJSON (PublicKeyCredentialDescriptor {..}) = object $
+    [ "type" .= toJSON pkcdType
+    , "id" .= toJSON pkcdId
+    ] ++ mtransports
+    where
+      mtransports = maybe [] (\x -> [ "transports" .= toJSON x ]) pkcdTransports
 
 data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, Generic)
 
