@@ -1,8 +1,3 @@
-{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 -----------------------------------------------------------------------
 -- |
 -- Module      :  WebAuthn
@@ -10,241 +5,227 @@
 --
 -- Maintainer  :  Fumiaki Kinoshita <fumiexcel@gmail.com>
 --
--- <https://www.w3.org/TR/webauthn/ Web Authentication API> Verification library
+-- <https://www.w3.org/TR/webauthn-2/ Web Authentication API> Verification library
 -----------------------------------------------------------------------
 
-module WebAuthn (
-  -- * Basic
-  TokenBinding(..)
-  , Origin(..)
-  , RelyingParty(..)
-  , defaultRelyingParty
-  , User(..)
-  -- Challenge
-  , Challenge(..)
-  , generateChallenge
-  , WebAuthnType(..)
-  , CollectedClientData(..)
-  , AuthenticatorData(..)
-  , AttestedCredentialData(..)
-  , AAGUID(..)
-  , CredentialPublicKey(..)
-  , CredentialId(..)
-  -- * verfication
-  , VerificationFailure(..)
-  , registerCredential
-  , defaultCredentialCreationOptions
-  , verify
-  , encodeAttestation
-  ) where
+module WebAuthn where
 
 import Prelude hiding (fail)
-import Data.Aeson as J
-import Data.Bits
+import Data.Aeson as AE
 import Data.ByteString (ByteString)
-import qualified Data.Serialize as C
 import qualified Data.ByteArray as BA
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Map as Map
 import Data.Text (Text)
-import Crypto.Random
-import Crypto.Hash
-import qualified Codec.CBOR.Term as CBOR
-import qualified Codec.CBOR.Read as CBOR
-import qualified Codec.CBOR.Decoding as CBOR
-import qualified Codec.CBOR.Encoding as CBOR
-import qualified Codec.Serialise as CBOR
-import Control.Monad.Fail
-import WebAuthn.Signature
-import WebAuthn.Types
-import qualified WebAuthn.TPM as TPM
-import qualified WebAuthn.FIDOU2F as U2F
-import qualified WebAuthn.Packed as Packed
-import qualified WebAuthn.AndroidSafetyNet as Android
-import Control.Monad (unless)
+import Data.Text.Encoding (encodeUtf8)
+import qualified Data.Text as T
+import qualified Crypto.Hash as H
+import Control.Monad (when, unless)
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
-import Data.Text (pack)
+import Control.Monad.Trans.Except (runExceptT, except, throwE)
 import qualified Data.X509.CertificateStore as X509
 import Data.Bifunctor (first)
-import Data.Text.Encoding (encodeUtf8)
 
--- | Generate a cryptographic challenge (13.1).
-generateChallenge :: Int -> IO Challenge
-generateChallenge len = Challenge <$> getRandomBytes len
+import WebAuthn.AuthenticatorData
+import qualified WebAuthn.Assertion as Assertion
+import WebAuthn.Attestation (AttestationObject(..), AttestationStatement(..))
+import qualified WebAuthn.Attestation as Attestation
+import qualified WebAuthn.Attestation.Statement.AndroidSafetyNet as AndroidSafetyNet
+import qualified WebAuthn.Attestation.Statement.FIDOU2F as FIDOU2F
+import qualified WebAuthn.Attestation.Statement.Packed as Packed
+import qualified WebAuthn.Attestation.Statement.TPM as TPM
+import WebAuthn.Signature
+import WebAuthn.Types
 
-parseAuthenticatorData :: C.Get AuthenticatorData
-parseAuthenticatorData = do
-  rpIdHash' <- C.getBytes 32
-  rpIdHash <- maybe (fail "impossible") pure $ digestFromByteString rpIdHash'
-  flags <- C.getWord8
-  _counter <- C.getBytes 4
-  attestedCredentialData <- if testBit flags 6
-    then do
-      aaguid <- AAGUID <$> C.getBytes 16
-      len <- C.getWord16be
-      credentialId <- CredentialId <$> C.getBytes (fromIntegral len)
-      n <- C.remaining
-      credentialPublicKey <- CredentialPublicKey <$> C.getBytes n
-      pure $ Just AttestedCredentialData{..}
-    else pure Nothing
-  let authenticatorDataExtension = B.empty --FIXME
-  let userPresent = testBit flags 0
-  let userVerified = testBit flags 2
-  return AuthenticatorData{..}
 
--- | Attestation (6.4) provided by authenticators
-
-data AttestationObject = AttestationObject
-  { fmt :: Text
-  , attStmt :: AttestationStatement
-  , authData :: ByteString
-  }
-
-data AttestationStatement = AF_Packed Packed.Stmt
-  | AF_TPM TPM.Stmt
-  | AF_AndroidKey
-  | AF_AndroidSafetyNet StmtSafetyNet
-  | AF_FIDO_U2F U2F.Stmt
-  | AF_None
-  deriving Show
-
-decodeAttestation :: CBOR.Decoder s AttestationObject
-decodeAttestation = do
-  m :: Map.Map Text CBOR.Term <- CBOR.decode
-  CBOR.TString fmt <- maybe (fail "fmt") pure $ Map.lookup "fmt" m
-  stmtTerm <- maybe (fail "stmt") pure $ Map.lookup "attStmt" m
-  stmt <- case fmt of
-    "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ U2F.decode stmtTerm
-    "packed" -> AF_Packed <$> Packed.decode stmtTerm
-    "tpm" -> AF_TPM <$> TPM.decode stmtTerm
-    "android-safetynet" -> AF_AndroidSafetyNet <$> Android.decode stmtTerm
-    "none" -> pure AF_None
-    _ -> fail $ "decodeAttestation: Unsupported format: " ++ show fmt
-  CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
-  return (AttestationObject fmt stmt adRaw)
-
-encodeAttestation :: AttestationObject -> CBOR.Encoding 
-encodeAttestation attestationObject = CBOR.encodeMapLen 3 
-  <> CBOR.encodeString "fmt"
-  <> encodeAttestationFmt
-  <> CBOR.encodeString  "attStmt"
-  where
-    encodeAttestationFmt :: CBOR.Encoding
-    encodeAttestationFmt =  case (attStmt attestationObject) of
-      AF_FIDO_U2F _ -> CBOR.encodeString "fido-u2f"
-      AF_Packed _ -> CBOR.encodeString "packed"
-      AF_TPM _ -> CBOR.encodeString "tpm"
-      AF_AndroidKey -> CBOR.encodeString "android-key"
-      AF_AndroidSafetyNet _ -> CBOR.encodeString "android-safetynet"
-      AF_None -> CBOR.encodeString "none"
-
--- | 7.1. Registering a New Credential
-registerCredential :: MonadIO m => X509.CertificateStore
-  -> CredentialCreationOptions
-  -> ByteString -- ^ clientDataJSON
-  -> ByteString -- ^ attestationObject
-  -> m (Either VerificationFailure AttestedCredentialData)
-registerCredential certStore opts clientDataJSON attestationObjectBS = runExceptT $ do
-  _ <- hoistEither runAttestationCheck
-  attestationObject <- hoistEither $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
-        $ CBOR.deserialiseFromBytes decodeAttestation
-        $ BL.fromStrict 
-        $ attestationObjectBS
-  ad <- hoistEither $ extractAuthData attestationObject
-  mAdPubKey <- verifyPubKey ad
-  -- TODO: extensions here
-  case (attStmt attestationObject) of
-    AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
-    AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey ad (authData attestationObject) clientDataHash
-    AF_TPM s -> hoistEither $ TPM.verify s ad (authData attestationObject) clientDataHash
-    AF_AndroidSafetyNet s -> Android.verify certStore s (authData attestationObject) clientDataHash
-    AF_None -> pure ()
-    _ -> throwE (UnsupportedAttestationFormat (pack $ show (attStmt attestationObject)))
-
-  case attestedCredentialData ad of
+-- | 7.1. Registering a New Credential (Attestation)
+--
+-- Registration ceremony (partial, read carefully).
+--
+-- Following steps of the algorithm described in 7.1 are NOT implemented here and are out of scope
+-- for this library:
+--
+-- 20. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root
+--     certificates) for that attestation type and attestation statement format fmt, from a trusted
+--     source or from policy. For example, the FIDO Metadata Service [FIDOMetadataService] provides
+--     one way to obtain such information, using the aaguid in the attestedCredentialData in
+--     authData.
+--
+--     (partially handled)
+--
+-- 21. ...
+--
+-- 22. Check that the credentialId is not yet registered to any other user. If registration is requested
+--     for a credential that is already registered to a different user, the Relying Party SHOULD fail this
+--     registration ceremony, or it MAY decide to accept the registration, e.g. while deleting the older
+--     registration.
+--
+-- 23. If the attestation statement attStmt verified successfully and is found to be trustworthy, then
+--     register the new credential with the account that was denoted in options.user:
+--
+--       o Associate the user’s account with the credentialId and credentialPublicKey in
+--         authData.attestedCredentialData, as appropriate for the Relying Party's system.
+--
+--       o Associate the credentialId with a new stored signature counter value initialized to the
+--         value of authData.signCount.
+--
+--     It is RECOMMENDED to also:
+--
+--       o Associate the credentialId with the transport hints returned by calling
+--         credential.response.getTransports(). This value SHOULD NOT be modified before or after
+--         storing it. It is RECOMMENDED to use this value to populate the transports of the
+--         allowCredentials option in future get() calls to help the client know how to find a
+--         suitable authenticator.
+--
+-- 24. If the attestation statement attStmt successfully verified but is not trustworthy per step 21
+--     above, the Relying Party SHOULD fail the registration ceremony.
+--
+-- TODO: This seems to need IO only because of AndroidSafetyNet.verify. Can we make it pure?
+--
+verifyRegistration :: MonadIO m
+  => RpId                                                 -- ^ Relying Party's ID
+  -> Origin                                               -- ^ Relying Party's origin
+  -> PublicKeyCredentialCreationOptions                   -- ^ options as sent to the client earlier
+  -> Maybe Text                                           -- ^ TLS connection token binding in base64
+  -> X509.CertificateStore                                -- ^ trust anchors
+  -> ByteString                                           -- ^ clientDataJSON
+  -> ByteString                                           -- ^ attestationObject
+  -> m (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))
+verifyRegistration rpId rpOrigin options rpTokenBinding trustAnchors clientDataJSON attestationObjectBS = runExceptT $ do
+  -- 1. Let options be a new PublicKeyCredentialCreationOptions structure configured to the Relying Party's needs for the ceremony.
+  -- options passed as argument
+  --
+  -- 2. Call navigator.credentials.create() and pass options as the publicKey option. Let credential be the result of the
+  --    successfully resolved promise.
+  -- credential passed as argument
+  --
+  -- 3. Let response be credential.response...
+  -- Should be done on the client. Data from response object is required as arguments here.
+  --
+  -- 4. Let clientExtensionResults be the result of calling credential.getClientExtensionResults()
+  -- We currently do not support any extensions. Skip ahead.
+  --
+  -- 5. to 10.
+  c :: CollectedClientData <- except $ first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict clientDataJSON
+  let PublicKeyCredentialCreationOptions{ challenge } = options
+  except $ Attestation.verifyCollectedClientData rpOrigin challenge rpTokenBinding c
+  -- 11.
+  let hash = H.hash clientDataJSON :: H.Digest H.SHA256
+  -- 12.
+  (AttestationObject{ attStmt, authData }, authDataRaw) <- except $ Attestation.parseAttestationObject attestationObjectBS
+  -- 13.
+  except $ unless (H.hash (encodeUtf8 $ unRpId rpId) == rpIdHash authData) $ Left MismatchedRPID
+  -- 14.
+  except $ unless (userPresent authData) $ Left UserNotPresent
+  -- 15.
+  let uvRequired = (authenticatorSelection options >>= (userVerification :: AuthenticatorSelection -> Maybe UserVerificationRequirement)) == Just Required
+  except $ when (uvRequired && not (userVerified authData)) $ Left UserUnverified
+  -- 16.
+  let PublicKeyCredentialCreationOptions{ pubKeyCredParams } = options
+  mAdPubKey <- except $ Attestation.verifyPubKey pubKeyCredParams authData
+  -- 17.
+  -- We currently do not support any extensions. Skip forward.
+  -- 18. to 19.
+  case attStmt of
+    ASFidou2f s -> except $ FIDOU2F.verify s authData hash
+    ASPacked s -> except $ Packed.verify s mAdPubKey authData authDataRaw hash
+    ASTpm s -> except $ TPM.verify s authData authDataRaw hash
+    ASAndroidSafetyNet s -> AndroidSafetyNet.verify trustAnchors s authDataRaw hash
+    ASNone -> pure ()
+    _ -> throwE $ UnsupportedAttestationFormat $ T.pack $ show attStmt
+  -- 20. to 24.
+  -- Not implemented here. Out of scope.
+  case attestedCredentialData authData of
     Nothing -> throwE MalformedAuthenticatorData
-    Just c -> pure c
-  where
-    RelyingParty rpOrigin rpId _ _ = ccoRelyingParty opts
-    clientDataHash = hash clientDataJSON :: Digest SHA256
-    runAttestationCheck = do 
-      CollectedClientData{..} <- either
-        (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
-      clientType == Create ?? InvalidType
-      ccoChallenge opts == clientChallenge ?? MismatchedChallenge (ccoChallenge opts) clientChallenge
-      rpOrigin == clientOrigin ?? MismatchedOrigin rpOrigin clientOrigin
-      case clientTokenBinding of
-        TokenBindingUnsupported -> pure ()
-        TokenBindingSupported -> pure ()
-        TokenBindingPresent t -> case ccoTokenBindingID opts of
-          Nothing -> Left UnexpectedPresenceOfTokenBinding
-          Just t'
-            | t == t' -> pure ()
-            | otherwise -> Left MismatchedTokenBinding
-    extractAuthData attestationObject = do
-      ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData (authData attestationObject)
-      hash (encodeUtf8 rpId) == rpIdHash ad ?? MismatchedRPID
-      userPresent ad ?? UserNotPresent
-      not (ccoRequireUserVerification opts) || userVerified ad ?? UserUnverified
-      pure ad
-    verifyPubKey ad = do
-      let pubKey = credentialPublicKey <$> attestedCredentialData ad
-      case pubKey of
-        Just k -> do
-          parsedPubKey <- either throwE return $ parsePublicKey k
-          unless (any (hasMatchingAlg parsedPubKey) $ ccoCredParams opts) $ throwE MalformedAuthenticatorData
-          return $ Just parsedPubKey
-        -- non present public key will fail anyway or the fmt == 'none'
-        Nothing -> return Nothing
+    Just x -> pure (x, attStmt, signCount authData)
+
+ 
 
 -- | 7.2. Verifying an Authentication Assertion
-verify :: Challenge
-  -> RelyingParty
-  -> Maybe Text -- ^ Token Binding ID in base64
-  -> Bool -- ^ require user verification?
-  -> ByteString -- ^ clientDataJSON
-  -> ByteString -- ^ authenticatorData
-  -> ByteString -- ^ signature
-  -> CredentialPublicKey -- ^ public key
-  -> Either VerificationFailure ()
-verify challenge rp tbi verificationRequired clientDataJSON adRaw sig pub = do
-  clientDataCheck Get challenge clientDataJSON rp tbi
-  let clientDataHash = hash clientDataJSON :: Digest SHA256
-  _ <- verifyAuthenticatorData rp adRaw verificationRequired
-  let dat = adRaw <> BA.convert clientDataHash
-  pub' <- parsePublicKey pub
-  verifySig pub' sig dat
-
-clientDataCheck :: WebAuthnType -> Challenge -> ByteString -> RelyingParty -> Maybe Text -> Either VerificationFailure ()
-clientDataCheck ctype challenge clientDataJSON rp tbi = do 
-  ccd <-  first JSONDecodeError (J.eitherDecode $ BL.fromStrict clientDataJSON)
-  clientType ccd == ctype ?? InvalidType
-  challenge == clientChallenge ccd ?? MismatchedChallenge challenge (clientChallenge ccd)
-  rpOrigin rp == clientOrigin ccd ?? MismatchedOrigin (rpOrigin rp) (clientOrigin ccd)
-  verifyClientTokenBinding tbi (clientTokenBinding ccd)
-
-verifyClientTokenBinding :: Maybe Text -> TokenBinding -> Either VerificationFailure ()
-verifyClientTokenBinding tbi (TokenBindingPresent t) = case tbi of
-      Nothing -> Left UnexpectedPresenceOfTokenBinding
-      Just t'
-        | t == t' -> pure ()
-        | otherwise -> Left MismatchedTokenBinding 
-verifyClientTokenBinding _ _ = pure ()
-
-verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
-verifyAuthenticatorData rp adRaw verificationRequired = do
-  ad <- first (const MalformedAuthenticatorData) (C.runGet parseAuthenticatorData adRaw)
-  hash (case rp of RelyingParty{ rpId } -> encodeUtf8 rpId) == rpIdHash ad ?? MismatchedRPID
-  userPresent ad ?? UserNotPresent
-  not verificationRequired || userVerified ad ?? UserUnverified
-  pure ad
-
-(??) :: Bool -> e -> Either e ()
-False ?? e = Left e
-True ?? _ = Right ()
-infix 1 ??
-
-hoistEither :: Monad m => Either e a -> ExceptT e m a
-hoistEither = ExceptT . pure
+--
+-- Authentication ceremony (partial, read carefully).
+--
+-- Following steps of the algorithm described in 7.2 are NOT implemented here and are out of scope
+-- for this library:
+--
+-- 6. Identify the user being authenticated and verify that this user is the owner of the public key
+--    credential source credentialSource identified by credential.id:
+--
+--    If the user was identified before the authentication ceremony was initiated, e.g.,
+--    via a username or cookie,
+--        verify that the identified user is the owner of credentialSource. If response.userHandle
+--        is present, let userHandle be its value. Verify that userHandle also maps to the same user.
+--
+--    If the user was not identified before the authentication ceremony was initiated,
+--        verify that response.userHandle is present, and that the user identified by this value is
+--        the owner of credentialSource.
+--
+-- 7. Using credential.id (or credential.rawId, if base64url encoding is inappropriate for your use
+--    case), look up the corresponding credential public key and let credentialPublicKey be that
+--    credential public key.
+--
+-- These steps are caller's responsibility.
+--
+-- Addionally, following steps require the caller to lookup user-associated data:
+--
+-- 21. Let storedSignCount be the stored signature counter value associated with credential.id (...)
+--
+-- The result of verifyAssertion is either an error, in which case authentication should fail, or a
+-- value that should be saved as the new storedSignCount.
+--
+verifyAssertion
+  :: RpId                                               -- ^ Relying Party's ID
+  -> Origin                                             -- ^ Relying Party's origin
+  -> PublicKeyCredentialRequestOptions                  -- ^ Options for Assertion Generation as sent to the client earlier
+  -> PublicKeyCredential AuthenticatorAssertionResponse -- ^ credential - result of a successful navigator.credential.get()
+  -> Maybe Text                                         -- ^ Token Binding ID in base64
+  -> CredentialPublicKey                                -- ^ stored credentialPublicKey
+  -> SignCount                                          -- ^ stored signCount
+  -> Either VerificationFailure (Maybe SignCount)
+verifyAssertion rpId rpOrigin options credential tbi credentialPublicKey storedSignCount = do
+  -- 1. Let options be a new PublicKeyCredentialRequestOptions structure configured to the Relying Party's needs for the ceremony.
+  -- options passed as argument
+  -- 
+  -- 2. Call navigator.credentials.get() and pass options as the publicKey option. Let credential be the result...
+  -- credential passed as argument
+  --
+  -- 3. Let response be credential.response...
+  let PublicKeyCredential{ response } = credential
+  -- 4. Let clientExtensionResults be the result of calling credential.getClientExtensionResults().
+  -- We currently do not support any extensions. Skip ahead.
+  --
+  -- 5.
+  Assertion.verifyCredentialAllowed options credential
+  -- 6. to 7.
+  -- Not implemented here. Caller MUST perform both prior to executing verify.
+  --
+  -- 8. to 14.
+  let PublicKeyCredentialRequestOptions{ challenge } = options
+      AuthenticatorAssertionResponse{ clientDataJSON } = response
+  collectedClientData <- first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict clientDataJSON
+  Assertion.verifyCollectedClientData rpOrigin challenge tbi collectedClientData
+  -- 15. to 18.
+  let PublicKeyCredentialRequestOptions{ userVerification } = options
+      AuthenticatorAssertionResponse{ authenticatorData, signature } = response
+  authData <- first (const MalformedAuthenticatorData) (parseAuthenticatorData authenticatorData)
+  Assertion.verifyAuthenticatorData rpId (userVerification == Just Required) authData
+  -- 19. to 20.
+  let hash = H.hash clientDataJSON :: H.Digest H.SHA256
+      dat = authenticatorData <> BA.convert hash
+  pubKey <- parsePublicKey credentialPublicKey
+  verifySig pubKey signature dat
+  -- 21.
+  let AuthenticatorData{ signCount } = authData
+  if signCount /= 0 || storedSignCount /= 0
+    then
+      if signCount > storedSignCount
+      then pure $ Just signCount
+      else
+        -- This is a signal that the authenticator may be cloned, i.e. at least two copies of the
+        -- credential private key may exist and are being used in parallel. Relying Parties
+        -- should incorporate this information into their risk scoring. Whether the Relying
+        -- Party updates storedSignCount in this case, or not, or fails the authentication
+        -- ceremony or not, is Relying Party-specific.
+        --
+        -- TODO: should be configurable
+        Left InvalidSignCount
+    else pure Nothing

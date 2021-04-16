@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
-module WebAuthn.Packed where
+-- | 8.2. Packed Attestation Statement Format
+module WebAuthn.Attestation.Statement.Packed where
 
 import Data.ByteString.Lazy (fromStrict)
 import Data.ASN1.BinaryEncoding (DER(..))
@@ -16,17 +16,18 @@ import qualified Data.X509 as X509
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
+
 import WebAuthn.Signature
 import WebAuthn.Types
 
 data Stmt = Stmt PubKeyCredAlg BS.ByteString (Maybe (X509.SignedExact X509.Certificate))
-  deriving Show
+  deriving stock (Show)
 
 decode :: CBOR.Term -> CBOR.Decoder s Stmt
 decode (CBOR.TMap xs) = do
   let m = Map.fromList xs
   CBOR.TInt algc <- Map.lookup (CBOR.TString "alg") m ??? "alg"
-  algo <- maybe (fail $ "Packed.decode: alg not supported " <> show algc) return $ pubKeyCredAlgFromInt algc
+  algo <- maybe (fail $ "Packed.decode: alg not supported " <> show algc) return $ pubKeyCredAlgFromInt32 $ fromIntegral algc
   CBOR.TBytes sig <- Map.lookup (CBOR.TString "sig") m ??? "sig"
   cert <- case Map.lookup (CBOR.TString "x5c") m of
     Just (CBOR.TList (CBOR.TBytes certBS : _)) ->
@@ -38,7 +39,8 @@ decode (CBOR.TMap xs) = do
     Just a ??? _ = pure a
 decode _ = fail "Packed.decode: expected a Map"
 
-verify :: Stmt
+verify
+  :: Stmt
   -> Maybe PublicKey
   -> AuthenticatorData
   -> BS.ByteString
