@@ -91,13 +91,13 @@ data VerificationFailure
 -- | 5.1. PublicKeyCredential Interface
 --
 -- Extensions are not implemented.
+-- Use with AuthenticatorAttestationResponse or AuthenticatorAssertionResponse.
 data PublicKeyCredential response = PublicKeyCredential
   { id :: Text
   , rawId :: Base64UrlByteString
   , response :: response
   , typ :: PublicKeyCredentialType
   } deriving stock (Show, Generic)
-
 
 -- | 5.2.1. Information About Public Key Credential (interface AuthenticatorAttestationResponse)
 data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
@@ -131,7 +131,13 @@ instance FromJSON AuthenticatorAssertionResponse where
 data PublicKeyCredentialParameters = PublicKeyCredentialParameters
   { typ :: PublicKeyCredentialType
   , alg :: COSEAlgorithmIdentifier
-  } deriving (Eq, Show)
+  } deriving stock (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialParameters where
+  toJSON PublicKeyCredentialParameters{..} = AE.object
+    [ "type" .= toJSON typ
+    , "alg" .= toJSON alg
+    ]
 
 -- | 5.4. Options for Credential Creation (dictionary PublicKeyCredentialCreationOptions)
 data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions
@@ -142,9 +148,13 @@ data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions
   , timeout :: Maybe Word32
   , excludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
   , authenticatorSelection :: Maybe AuthenticatorSelection
-  , attestation :: Maybe Attestation
+  , attestation :: Maybe AttestationConveyancePreference 
   , extensions :: Maybe Extensions
   } deriving stock (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialCreationOptions where
+  toEncoding = AE.genericToEncoding AE.defaultOptions { omitNothingFields = True }
+  toJSON = AE.genericToJSON AE.defaultOptions { omitNothingFields = True }
 
 defaultCredentialCreationOptions
   :: PublicKeyCredentialRpEntity
@@ -207,8 +217,8 @@ data AuthenticatorAttachment = Platform | CrossPlatform
   deriving stock (Eq, Show)
 
 instance ToJSON AuthenticatorAttachment where
-  toJSON Platform = String "platform"
-  toJSON CrossPlatform = String "cross-platform"
+  toJSON Platform = AE.String "platform"
+  toJSON CrossPlatform = AE.String "cross-platform"
 
 -- | 5.4.6. Resident Key Requirement Enumeration (enum ResidentKeyRequirement)
 data ResidentKeyRequirement
@@ -218,16 +228,16 @@ data ResidentKeyRequirement
   deriving stock (Eq, Show)
 
 instance ToJSON ResidentKeyRequirement where
-  toJSON = \case
-    ResidentKeyDiscouraged -> String "discouraged"
-    ResidentKeyPreferred -> String "preferred"
-    ResidentKeyRequired -> String "required"
+  toJSON = AE.String . \case
+    ResidentKeyDiscouraged -> "discouraged"
+    ResidentKeyPreferred -> "preferred"
+    ResidentKeyRequired -> "required"
 
 -- | 5.4.7. Attestation Conveyance Preference Enumeration (enum AttestationConveyancePreference)
-data Attestation = None | Direct | Indirect | Enterprise
+data AttestationConveyancePreference = None | Direct | Indirect | Enterprise
   deriving stock (Eq, Show, Generic)
 
-instance ToJSON Attestation where
+instance ToJSON AttestationConveyancePreference where
   toJSON = AE.String . \case
     None -> "none"
     Direct -> "direct"
@@ -328,7 +338,7 @@ data Origin = Origin
 
 -- RFC6454 Section 6.1
 instance ToJSON Origin where
-  toJSON Origin{..} = String $ originScheme <> "://" <> originHost <> port originPort
+  toJSON Origin{..} = AE.String $ originScheme <> "://" <> originHost <> port originPort
     where
       port (Just x) = ":" <> T.pack (show x)
       port Nothing = ""
@@ -366,7 +376,7 @@ data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
   } deriving stock (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialDescriptor where
-  toJSON PublicKeyCredentialDescriptor{..} = object $
+  toJSON PublicKeyCredentialDescriptor{..} = AE.object $
     [ "type" .= toJSON typ
     , "id" .= toJSON id
     ] ++ mtransports
