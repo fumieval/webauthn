@@ -127,12 +127,18 @@ instance FromJSON AuthenticatorAssertionResponse where
       <*> fmap unBase64UrlByteString (o .: "signature")
       <*> fmap (fmap unBase64UrlByteString) (o .: "userHandler")
 
+-- | 5.3. Parameters for Credential Generation (dictionary PublicKeyCredentialParameters)
+data PublicKeyCredentialParameters = PublicKeyCredentialParameters
+  { typ :: PublicKeyCredentialType
+  , alg :: COSEAlgorithmIdentifier
+  } deriving (Eq, Show)
+
 -- | 5.4. Options for Credential Creation (dictionary PublicKeyCredentialCreationOptions)
 data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions
   { rp :: PublicKeyCredentialRpEntity
   , user :: PublicKeyCredentialUserEntity
   , challenge :: Challenge
-  , pubKeyCredParams :: NonEmpty PubKeyCredAlg
+  , pubKeyCredParams :: NonEmpty PublicKeyCredentialParameters
   , timeout :: Maybe Word32
   , excludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
   , authenticatorSelection :: Maybe AuthenticatorSelection
@@ -147,7 +153,7 @@ defaultCredentialCreationOptions
   -> PublicKeyCredentialCreationOptions
 defaultCredentialCreationOptions rp user challenge =
   PublicKeyCredentialCreationOptions
-    { pubKeyCredParams = ES256 NE.:| []
+    { pubKeyCredParams = PublicKeyCredentialParameters PublicKey ES256 NE.:| []
     , timeout = Just 60000
     , excludeCredentials = Nothing
     , authenticatorSelection = Nothing
@@ -244,18 +250,19 @@ instance ToJSON PublicKeyCredentialRequestOptions where
   toEncoding = AE.genericToEncoding defaultOptions { omitNothingFields = True}
   toJSON = AE.genericToJSON defaultOptions { omitNothingFields = True}
 
-data PubKeyCredAlg
+-- | 5.8.5. Cryptographic Algorithm Identifier (typedef COSEAlgorithmIdentifier)
+data COSEAlgorithmIdentifier
   = ES256 -- (-7)
   | RS256 -- (-257)
   | PS256 -- (-37)
   deriving stock (Show, Eq)
 
-instance ToJSON PubKeyCredAlg where
+instance ToJSON COSEAlgorithmIdentifier where
   toJSON ES256 = Number (-7)
   toJSON RS256 = Number (-257)
   toJSON PS256 = Number (-37)
 
-pubKeyCredAlgFromInt32 :: Int32 -> Maybe PubKeyCredAlg
+pubKeyCredAlgFromInt32 :: Int32 -> Maybe COSEAlgorithmIdentifier
 pubKeyCredAlgFromInt32 = \case
   -7   -> Just ES256
   -257 -> Just RS256

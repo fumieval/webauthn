@@ -20,7 +20,7 @@ import qualified Data.Map as Map
 import WebAuthn.Signature
 import WebAuthn.Types
 
-data Stmt = Stmt PubKeyCredAlg BS.ByteString (Maybe (X509.SignedExact X509.Certificate))
+data Stmt = Stmt COSEAlgorithmIdentifier BS.ByteString (Maybe (X509.SignedExact X509.Certificate))
   deriving stock (Show)
 
 decode :: CBOR.Term -> CBOR.Decoder s Stmt

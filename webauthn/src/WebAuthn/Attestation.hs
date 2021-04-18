@@ -4,6 +4,7 @@ import Control.Monad (unless)
 import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -77,13 +78,13 @@ verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientDat
       -- RP did not provide TB, nothing to check
       pure ()
 
-verifyPubKey :: NonEmpty PubKeyCredAlg -> AuthenticatorData -> Either VerificationFailure (Maybe PublicKey)
-verifyPubKey pubKeyCredParams ad = do
+verifyPubKey :: NonEmpty PublicKeyCredentialParameters -> AuthenticatorData -> Either VerificationFailure (Maybe PublicKey)
+verifyPubKey params ad = do
   let pubKey = credentialPublicKey <$> attestedCredentialData ad
   case pubKey of
     Just k -> do
       parsedPubKey <- parsePublicKey k
-      unless (any (hasMatchingAlg parsedPubKey) pubKeyCredParams) $ Left MalformedAuthenticatorData
+      unless (any (hasMatchingAlg parsedPubKey) (NE.map (alg :: PublicKeyCredentialParameters -> COSEAlgorithmIdentifier) params)) $ Left MalformedAuthenticatorData
       pure $ Just parsedPubKey
     -- non present public key will fail anyway or the fmt == 'none'
     Nothing -> pure Nothing

@@ -28,7 +28,9 @@ import WebAuthn.Types
 import qualified Data.X509 as X509
 import qualified Data.X509.Validation as X509
 
-data PublicKey = PubEC EC.PublicKey | PubRSA RSA.PublicKey
+data PublicKey
+  = PubEC EC.PublicKey
+  | PubRSA RSA.PublicKey
   deriving (Show, Eq)
 
 verifySig :: PublicKey
@@ -44,7 +46,7 @@ verifySig (PubRSA pub) sig dat
   | Just dat' <- parseRS256Signature (RSA.ep pub sig), dat' == BA.convert (hashWith SHA256 dat) = pure ()
   | otherwise = Left $ SignatureFailure "RS256"
 
-hasMatchingAlg :: PublicKey -> PubKeyCredAlg -> Bool
+hasMatchingAlg :: PublicKey -> COSEAlgorithmIdentifier -> Bool
 hasMatchingAlg key algo =
     case key of
       PubEC (EC.PublicKey curve _) -> algo == ES256 && curve == EC.getCurveByName EC.SEC_p256r1
