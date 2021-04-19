@@ -9,8 +9,7 @@ module WebAuthn.Types where
 
 import Prelude hiding (fail)
 import Data.Aeson
-    ( Value(..)
-    , (.:)
+    ( (.:)
     , (.:?)
     , withObject
     , withText
@@ -30,18 +29,16 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 import Crypto.Hash (SHA256, Digest)
-import Crypto.Random (MonadRandom)
-import qualified Crypto.Random as Random
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail ( MonadFail(fail) )
-import qualified Data.X509 as X509
-import Data.Char (toUpper)
 import Data.ByteArray (ByteArrayAccess)
-import Data.List.NonEmpty as NE
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
 import GHC.Generics (Generic)
 import Data.Word (Word16, Word32)
 import Data.Int (Int32)
+import Data.Void ( Void )
 
 
 -- | RFC4648, Secion 5 with all trailing '=' characters omitted (as permitted by 3.2)
@@ -97,17 +94,31 @@ data PublicKeyCredential response = PublicKeyCredential
   , rawId :: Base64UrlByteString
   , response :: response
   , typ :: PublicKeyCredentialType
-  } deriving stock (Show, Generic)
+  } deriving stock (Show)
+
+instance FromJSON response => FromJSON (PublicKeyCredential response) where
+  parseJSON = withObject "PublicKeyCredential" $ \o ->
+    PublicKeyCredential
+      <$> o .: "id"
+      <*> o .: "rawId"
+      <*> o .: "response"
+      <*> o .: "type"
 
 -- | 5.2.1. Information About Public Key Credential (interface AuthenticatorAttestationResponse)
 data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
   { clientDataJSON :: ByteString
   , attestationObject :: ByteString
-  , transports :: [ByteString] -- TODO: should be a set?
+  --, transports :: [ByteString] -- TODO: should be a set?
   --, authenticatorData - omitted, stored inside attestationObject
   --, publicKey 
   --, publicKeyAlgorithm 
-  }
+  } deriving (Eq, Show)
+
+instance FromJSON AuthenticatorAttestationResponse where
+  parseJSON = withObject "AuthenticatorAttestationResponse" $ \o ->
+    AuthenticatorAttestationResponse
+      <$> fmap unBase64UrlByteString (o .: "clientDataJSON")
+      <*> fmap unBase64UrlByteString (o .: "attestationObject")
 
 -- | 5.2.2. Web Authentication Assertion (interface AuthenticatorAssertionResponse)
 --
@@ -217,8 +228,9 @@ data AuthenticatorAttachment = Platform | CrossPlatform
   deriving stock (Eq, Show)
 
 instance ToJSON AuthenticatorAttachment where
-  toJSON Platform = AE.String "platform"
-  toJSON CrossPlatform = AE.String "cross-platform"
+  toJSON = AE.String . \case
+    Platform -> "platform"
+    CrossPlatform -> "cross-platform"
 
 -- | 5.4.6. Resident Key Requirement Enumeration (enum ResidentKeyRequirement)
 data ResidentKeyRequirement
@@ -268,9 +280,10 @@ data COSEAlgorithmIdentifier
   deriving stock (Show, Eq)
 
 instance ToJSON COSEAlgorithmIdentifier where
-  toJSON ES256 = Number (-7)
-  toJSON RS256 = Number (-257)
-  toJSON PS256 = Number (-37)
+  toJSON = AE.Number . \case
+    ES256 -> (-7)
+    RS256 -> (-257)
+    PS256 -> (-37)
 
 pubKeyCredAlgFromInt32 :: Int32 -> Maybe COSEAlgorithmIdentifier
 pubKeyCredAlgFromInt32 = \case
@@ -329,7 +342,7 @@ instance FromJSON WebAuthnType where
 --
 -- https://www.w3.org/TR/webauthn-2/#dom-collectedclientdata-origin
 --
--- TODO: this should probably network-uri or so
+-- TODO: this should probably use network-uri or so
 data Origin = Origin
   { originScheme :: Text
   , originHost :: Text
@@ -376,9 +389,9 @@ data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
   } deriving stock (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialDescriptor where
-  toJSON PublicKeyCredentialDescriptor{..} = AE.object $
+  toJSON PublicKeyCredentialDescriptor{ typ, id = credId, transports } = AE.object $
     [ "type" .= toJSON typ
-    , "id" .= toJSON id
+    , "id" .= toJSON credId
     ] ++ mtransports
     where
       mtransports = maybe [] (\x -> [ "transports" .= toJSON x ]) transports
@@ -456,68 +469,41 @@ newtype Challenge = Challenge { unChallenge :: ByteString }
   deriving newtype (H.Hashable, CBOR.Serialise)
   deriving (ToJSON, FromJSON) via Base64UrlByteString
 
--- In order to prevent replay attacks, the challenges MUST contain enough entropy to make guessing them infeasible.
--- Challenges SHOULD therefore be at least 16 bytes long.
-newChallenge :: MonadRandom m => m Challenge
-newChallenge = newChallenge' 16
-
-newChallenge' :: MonadRandom m => Word16 -> m Challenge
-newChallenge' len = Challenge <$> Random.getRandomBytes (fromIntegral len)
-
 
 -----------------------------------------------------------------------------
--- Everything below needs annotation:
+-- Everything below needs review
 --
+-- Some extensions described in Level 1 seem to be removed and new ones
+-- appeared in Level 2
 
--- Probably move to Attestation.Statement...
-data AndroidSafetyNet = AndroidSafetyNet
-  { timestampMs :: Integer
-  , nonce :: [Char]
-  , apkPackageName :: Text
-  , apkCertificateDigestSha256 :: [Text]
-  , ctsProfileMatch :: Bool
-  , basicIntegrity :: Bool
-  } deriving stock (Show, Generic)
-    deriving anyclass (FromJSON)
+-- placeholder
+type Extensions = Void
 
-data StmtSafetyNet = StmtSafetyNet
-  { header :: Base64UrlByteString
-  , payload :: Base64UrlByteString
-  , signature :: ByteString
-  , certificates :: X509.CertificateChain
-  } deriving stock Show
-
-data JWTHeader = JWTHeader
-  { alg :: Text
-  , x5c :: [Text]
-  } deriving stock (Show, Generic)
-    deriving anyclass (FromJSON)
-
-newtype AuthnSel = AuthnSel [Base64UrlByteString]
-  deriving stock (Show, Eq, Generic)
-
-instance ToJSON AuthnSel where
-  toEncoding = AE.genericToEncoding defaultOptions { unwrapUnaryRecords = True }
-  toJSON = AE.genericToJSON defaultOptions { unwrapUnaryRecords = True }
-
-data BiometricPerfBounds = BiometricPerfBounds
-  { far :: Double
-  , frr :: Double
-  } deriving stock (Show, Eq, Generic)
-
-instance ToJSON BiometricPerfBounds where
-  toEncoding = AE.genericToEncoding defaultOptions { fieldLabelModifier = fmap toUpper }
-  toJSON = AE.genericToJSON defaultOptions { fieldLabelModifier = fmap toUpper }
-
-data Extensions = Extensions
-  { uvi :: Bool
-  , loc :: Bool
-  , uvm :: Bool
-  , exts :: Bool
-  , authnSel :: Maybe AuthnSel
-  , biometricPerfBounds :: Maybe BiometricPerfBounds
-  } deriving stock (Show, Eq, Generic)
-
-instance ToJSON Extensions where
-  toEncoding = AE.genericToEncoding defaultOptions { omitNothingFields = True }
-  toJSON = AE.genericToJSON defaultOptions { omitNothingFields = True }
+-- newtype AuthnSel = AuthnSel [Base64UrlByteString]
+--   deriving stock (Show, Eq, Generic)
+--
+-- instance ToJSON AuthnSel where
+--   toEncoding = AE.genericToEncoding defaultOptions { unwrapUnaryRecords = True }
+--   toJSON = AE.genericToJSON defaultOptions { unwrapUnaryRecords = True }
+--
+-- data BiometricPerfBounds = BiometricPerfBounds
+--   { far :: Double
+--   , frr :: Double
+--   } deriving stock (Show, Eq, Generic)
+--
+-- instance ToJSON BiometricPerfBounds where
+--   toEncoding = AE.genericToEncoding defaultOptions { fieldLabelModifier = fmap toUpper }
+--   toJSON = AE.genericToJSON defaultOptions { fieldLabelModifier = fmap toUpper }
+--
+-- data Extensions = Extensions
+--   { uvi :: Bool
+--   , loc :: Bool
+--   , uvm :: Bool
+--   , exts :: Bool
+--   , authnSel :: Maybe AuthnSel
+--   , biometricPerfBounds :: Maybe BiometricPerfBounds
+--   } deriving stock (Show, Eq, Generic)
+--
+-- instance ToJSON Extensions where
+--   toEncoding = AE.genericToEncoding defaultOptions { omitNothingFields = True }
+--   toJSON = AE.genericToJSON defaultOptions { omitNothingFields = True }

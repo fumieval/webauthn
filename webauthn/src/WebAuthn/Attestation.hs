@@ -1,6 +1,6 @@
 module WebAuthn.Attestation where
 
-import Control.Monad (unless)
+import Control.Monad (when, unless)
 import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
@@ -8,7 +8,9 @@ import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
+import qualified Data.Text.Encoding as TE
 import Data.List.NonEmpty (NonEmpty)
+import qualified Crypto.Hash as H
 
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
@@ -20,6 +22,7 @@ import qualified WebAuthn.Attestation.Statement.FIDOU2F as FIDOU2F
 import qualified WebAuthn.Attestation.Statement.Packed as Packed
 import qualified WebAuthn.Attestation.Statement.TPM as TPM
 import WebAuthn.AuthenticatorData
+import WebAuthn.Common (verifyTokenBinding)
 import WebAuthn.Signature ( hasMatchingAlg, parsePublicKey, PublicKey )
 import WebAuthn.Types
 
@@ -44,13 +47,14 @@ data AttestationStatement
   = ASPacked Packed.Stmt
   | ASTpm TPM.Stmt
   | ASAndroidKey
-  | ASAndroidSafetyNet StmtSafetyNet
+  | ASAndroidSafetyNet AndroidSafetyNet.StmtSafetyNet
   | ASFidou2f FIDOU2F.Stmt
-  -- 8.7. None Attestation Statement Format (not in the IANA registry)
+  -- 8.7. None Attestation Statement Format (defined in the spec, not in the IANA registry)
   | ASNone
+  | ASApple
   deriving Show
 
--- 7.1 steps 7. to 10.
+-- | 7.1 steps 7. to 10.
 verifyCollectedClientData :: Origin -> Challenge -> Maybe Text -> CollectedClientData -> Either VerificationFailure ()
 verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientData{..} = do
   -- 7.
@@ -60,23 +64,17 @@ verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientDat
   -- 9.
   unless (origin == rpOrigin) $ Left $ MismatchedOrigin rpOrigin origin
   -- 10.
-  case rpTokenBinding of
-    Just rpTb ->
-      case tokenBinding of
-        Just TokenBindingSupported ->
-          -- RP provided a TB, client claims support but also claims that it was not negotiated.
-          -- Either something went wrong or the client is lying.
-          Left MismatchedTokenBinding
-        Just (TokenBindingPresent clientTb) ->
-          -- Both RP and client provided TB, values must match
-          unless (clientTb == rpTb) $ Left MismatchedTokenBinding
-        Nothing ->
-          -- RP provided a TB but client claims no support.
-          -- Either something went wrong or the client is lying.
-          Left MismatchedTokenBinding
-    Nothing ->
-      -- RP did not provide TB, nothing to check
-      pure ()
+  verifyTokenBinding rpTokenBinding tokenBinding
+
+-- | 7.1 steps 13. to 15.
+verifyAttestationObject :: RpId -> Bool -> AttestationObject -> Either VerificationFailure ()
+verifyAttestationObject rpId uvRequired AttestationObject{..} = do
+  -- 13.
+  unless (H.hash (TE.encodeUtf8 $ unRpId rpId) == rpIdHash authData) $ Left MismatchedRPID
+  -- 14.
+  unless (userPresent authData) $ Left UserNotPresent
+  -- 15.
+  when (uvRequired && not (userVerified authData)) $ Left UserUnverified
 
 verifyPubKey :: NonEmpty PublicKeyCredentialParameters -> AuthenticatorData -> Either VerificationFailure (Maybe PublicKey)
 verifyPubKey params ad = do

@@ -1,9 +1,15 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
+
 module WebAuthn.Attestation.Statement.AndroidSafetyNet where
 
+import GHC.Generics (Generic)
+import Data.Aeson (FromJSON)
 import qualified Data.Aeson as AE
 import Data.ByteString (ByteString)
-import Data.Text (pack)
-import Data.Text.Encoding (encodeUtf8)
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
@@ -29,6 +35,30 @@ import WebAuthn.Signature (verifyX509Sig)
 import WebAuthn.Types
 
 
+data AndroidSafetyNet = AndroidSafetyNet
+  { timestampMs :: Integer
+  , nonce :: [Char]
+  , apkPackageName :: Text
+  , apkCertificateDigestSha256 :: [Text]
+  , ctsProfileMatch :: Bool
+  , basicIntegrity :: Bool
+  } deriving stock (Show, Generic)
+    deriving anyclass (FromJSON)
+
+data StmtSafetyNet = StmtSafetyNet
+  { header :: Base64UrlByteString
+  , payload :: Base64UrlByteString
+  , signature :: ByteString
+  , certificates :: X509.CertificateChain
+  } deriving stock (Show)
+
+data JWTHeader = JWTHeader
+  { alg :: Text
+  , x5c :: [Text]
+  } deriving stock (Show, Generic)
+    deriving anyclass (FromJSON)
+
+
 decode :: CBOR.Term -> CBOR.Decoder s StmtSafetyNet
 decode (CBOR.TMap xs) = do
   let m = Map.fromList xs
@@ -44,8 +74,8 @@ getCertificateChain h = do
   case AE.eitherDecode bs of
     Left e -> fail ("android-safetynet: Response header decode failed: " <> show e)
     Right jth -> do
-      if alg (jth ::JWTHeader) /= "RS256" then fail ("android-safetynet: Unknown signature alg " <> show (alg (jth :: JWTHeader))) else do
-        let x5cbs = B64.decodeBase64Lenient . encodeUtf8 <$> x5c jth
+      if alg (jth :: JWTHeader) /= "RS256" then fail ("android-safetynet: Unknown signature alg " <> show (alg (jth :: JWTHeader))) else do
+        let x5cbs = B64.decodeBase64Lenient . TE.encodeUtf8 <$> x5c jth
         case X509.decodeCertificateChain (X509.CertificateChainRaw x5cbs) of
           Left e -> fail ("Certificate chain decode failed: " <> show e)
           Right cc -> pure cc
@@ -72,7 +102,7 @@ verify trustAnchors sf authDataRaw clientDataHash = do
       res <- liftIO $ X509.validateDefault trustAnchors (X509.exceptionValidationCache []) ("attest.android.com", "") (certificates sf)
       case res of
         [] -> pure ()
-        es -> throwE (MalformedX509Certificate (pack $ show es))
+        es -> throwE (MalformedX509Certificate (T.pack $ show es))
       cert <- failWith MalformedPublicKey (signCert $ certificates sf)
       let pub = X509.certPubKey $ X509.getCertificate cert
       except $ verifyX509Sig rs256 pub dat (signature (sf :: StmtSafetyNet)) "AndroidSafetyNet"

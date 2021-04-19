@@ -11,21 +11,16 @@
 module WebAuthn where
 
 import Prelude hiding (fail)
-import Data.Aeson as AE
-import Data.ByteString (ByteString)
 import qualified Data.ByteArray as BA
-import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text as T
 import qualified Crypto.Hash as H
-import Control.Monad (when, unless)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Except (runExceptT, except, throwE)
 import qualified Data.X509.CertificateStore as X509
 import Data.Bifunctor (first)
 
-import WebAuthn.AuthenticatorData
+import WebAuthn.AuthenticatorData ( parseAuthenticatorData )
 import qualified WebAuthn.Assertion as Assertion
 import WebAuthn.Attestation (AttestationObject(..), AttestationStatement(..))
 import qualified WebAuthn.Attestation as Attestation
@@ -33,7 +28,8 @@ import qualified WebAuthn.Attestation.Statement.AndroidSafetyNet as AndroidSafet
 import qualified WebAuthn.Attestation.Statement.FIDOU2F as FIDOU2F
 import qualified WebAuthn.Attestation.Statement.Packed as Packed
 import qualified WebAuthn.Attestation.Statement.TPM as TPM
-import WebAuthn.Signature
+import WebAuthn.Common ( parseCollectedClientData )
+import WebAuthn.Signature ( parsePublicKey, verifySig )
 import WebAuthn.Types
 
 
@@ -84,41 +80,37 @@ import WebAuthn.Types
 verifyRegistration :: MonadIO m
   => RpId                                                 -- ^ Relying Party's ID
   -> Origin                                               -- ^ Relying Party's origin
-  -> PublicKeyCredentialCreationOptions                   -- ^ options as sent to the client earlier
   -> Maybe Text                                           -- ^ TLS connection token binding in base64
+  -> PublicKeyCredentialCreationOptions                   -- ^ options as sent to the client earlier
+  -> PublicKeyCredential AuthenticatorAttestationResponse -- ^ credential from navigator.credential.create()
   -> X509.CertificateStore                                -- ^ trust anchors
-  -> ByteString                                           -- ^ clientDataJSON
-  -> ByteString                                           -- ^ attestationObject
   -> m (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))
-verifyRegistration rpId rpOrigin options rpTokenBinding trustAnchors clientDataJSON attestationObjectBS = runExceptT $ do
+verifyRegistration rpId rpOrigin rpTokenBinding  options credential trustAnchors = runExceptT $ do
   -- 1. Let options be a new PublicKeyCredentialCreationOptions structure configured to the Relying Party's needs for the ceremony.
-  -- options passed as argument
+  -- Passed as argument.
   --
   -- 2. Call navigator.credentials.create() and pass options as the publicKey option. Let credential be the result of the
   --    successfully resolved promise.
-  -- credential passed as argument
+  -- Passed as argument.
   --
   -- 3. Let response be credential.response...
-  -- Should be done on the client. Data from response object is required as arguments here.
+  let PublicKeyCredential { response } = credential
+      AuthenticatorAttestationResponse{..} = response
   --
   -- 4. Let clientExtensionResults be the result of calling credential.getClientExtensionResults()
   -- We currently do not support any extensions. Skip ahead.
   --
   -- 5. to 10.
-  c :: CollectedClientData <- except $ first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict clientDataJSON
+  c <- except $ parseCollectedClientData clientDataJSON
   let PublicKeyCredentialCreationOptions{ challenge } = options
   except $ Attestation.verifyCollectedClientData rpOrigin challenge rpTokenBinding c
   -- 11.
   let hash = H.hash clientDataJSON :: H.Digest H.SHA256
   -- 12.
-  (AttestationObject{ attStmt, authData }, authDataRaw) <- except $ Attestation.parseAttestationObject attestationObjectBS
-  -- 13.
-  except $ unless (H.hash (encodeUtf8 $ unRpId rpId) == rpIdHash authData) $ Left MismatchedRPID
-  -- 14.
-  except $ unless (userPresent authData) $ Left UserNotPresent
-  -- 15.
+  (attObj@AttestationObject{ attStmt, authData }, authDataRaw) <- except $ Attestation.parseAttestationObject attestationObject
+  -- 13. to 15.
   let uvRequired = (authenticatorSelection options >>= (userVerification :: AuthenticatorSelection -> Maybe UserVerificationRequirement)) == Just Required
-  except $ when (uvRequired && not (userVerified authData)) $ Left UserUnverified
+  except $ Attestation.verifyAttestationObject rpId uvRequired attObj
   -- 16.
   let PublicKeyCredentialCreationOptions{ pubKeyCredParams } = options
   mAdPubKey <- except $ Attestation.verifyPubKey pubKeyCredParams authData
@@ -131,7 +123,7 @@ verifyRegistration rpId rpOrigin options rpTokenBinding trustAnchors clientDataJ
     ASTpm s -> except $ TPM.verify s authData authDataRaw hash
     ASAndroidSafetyNet s -> AndroidSafetyNet.verify trustAnchors s authDataRaw hash
     ASNone -> pure ()
-    _ -> throwE $ UnsupportedAttestationFormat $ T.pack $ show attStmt
+    x -> throwE $ UnsupportedAttestationFormat $ T.pack $ show x
   -- 20. to 24.
   -- Not implemented here. Out of scope.
   case attestedCredentialData authData of
@@ -175,13 +167,13 @@ verifyRegistration rpId rpOrigin options rpTokenBinding trustAnchors clientDataJ
 verifyAssertion
   :: RpId                                               -- ^ Relying Party's ID
   -> Origin                                             -- ^ Relying Party's origin
-  -> PublicKeyCredentialRequestOptions                  -- ^ Options for Assertion Generation as sent to the client earlier
-  -> PublicKeyCredential AuthenticatorAssertionResponse -- ^ credential - result of a successful navigator.credential.get()
   -> Maybe Text                                         -- ^ Token Binding ID in base64
+  -> PublicKeyCredentialRequestOptions                  -- ^ Options for Assertion Generation as sent to the client earlier
+  -> PublicKeyCredential AuthenticatorAssertionResponse -- ^ credential from navigator.credential.get()
   -> CredentialPublicKey                                -- ^ stored credentialPublicKey
   -> SignCount                                          -- ^ stored signCount
   -> Either VerificationFailure (Maybe SignCount)
-verifyAssertion rpId rpOrigin options credential tbi credentialPublicKey storedSignCount = do
+verifyAssertion rpId rpOrigin rpTokenBinding options credential credentialPublicKey storedSignCount = do
   -- 1. Let options be a new PublicKeyCredentialRequestOptions structure configured to the Relying Party's needs for the ceremony.
   -- options passed as argument
   -- 
@@ -201,8 +193,8 @@ verifyAssertion rpId rpOrigin options credential tbi credentialPublicKey storedS
   -- 8. to 14.
   let PublicKeyCredentialRequestOptions{ challenge } = options
       AuthenticatorAssertionResponse{ clientDataJSON } = response
-  collectedClientData <- first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict clientDataJSON
-  Assertion.verifyCollectedClientData rpOrigin challenge tbi collectedClientData
+  c <- parseCollectedClientData clientDataJSON
+  Assertion.verifyCollectedClientData rpOrigin challenge rpTokenBinding c
   -- 15. to 18.
   let PublicKeyCredentialRequestOptions{ userVerification } = options
       AuthenticatorAssertionResponse{ authenticatorData, signature } = response
