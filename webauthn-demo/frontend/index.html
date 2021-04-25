@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>WebAuthn demo</title>
+    <link rel="stylesheet" href="/dist/tailwind.min.css">
+  </head>
+  <body>
+    <div class="flex justify-center absolute top-0 bottom-0 left-0 right-0 overflow-hidden">
+
+      <div class="w-1/3 flex flex-col overflow-hidden">
+        <h1 class="text-3xl my-10">WebAuthn demo</h1>
+
+        <div class="w-full">
+          <form id="form">
+            <input id="username" class="block border px-2 py-2 my-2 w-full" type="text" name="username" placeholder="Username" required />
+            <div class="flex flex-row">
+              <button id="btn-register" class="py-2 text-white bg-green-500 w-1/2" type="button">Register</button>
+              <button id="btn-login" class="py-2 text-white bg-green-500 w-1/2 ml-3" type="button">Login</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="mt-10">
+          Browser support: <span id="supported"></span>
+        </div>
+
+        <div class="flex flex-col mt-10 pb-5 overflow-hidden">
+          <div class="flex justify-between">
+            Debug console:
+            <button id="btn-clear" class="p-1 bg-gray-300" type="button">clear</button>
+          </div>
+          <code id="output" class="w-full h-full overflow-scroll border p-3 whitespace-pre text-xs"></code>
+        </div>
+      </div>
+
+      <div class="w-1/3 ml-10 border p-10 bg-gray-100">
+        <h3 class="text-xl mb-3">Instructions</h3>
+        <p>
+          <ol class="list-decimal">
+            <li>Plug in your security key 🔑.</li>
+            <li>Type an example username.</li>
+            <li>Click [Register], the browser should ask for confirmation and may warn about privacy issues. Observe the console output.</li>
+            <li>Click [Login], the browser should ask you to tap the key. Observe console output.</li>
+          </ol>
+        </p>
+
+        <h3 class="text-xl mt-10 mb-3">Things to try</h3>
+        <p>
+          <ul class="list-disc">
+            <li>Try to register the same key twice for the same user. What happens?</li>
+            <li>Register multiple keys for the same user. What is sent in *Options (excludeCredentials, allowCredentials) on registration and login?</li>
+            <li>Register a key. Try to log in. Now try to log in as that same user with a different key without registering it first. What happens?</li>
+            <li>Open network tab in dev tools and observe what is being sent.</li>
+            <li>Check out the original version at <a href="https://webauthn.io">https://webauthn.io</a>.</li>
+          </ul>
+        </p>
+
+        <h3 class="text-xl mt-10 mb-3">Troubleshooting</h3>
+        <p>
+          <ul class="list-disc">
+            <li>Browser support should show ✅. If not then your browser does not seem to support WebAuthn. Try to use latest Firefox or Chrome.</li>
+            <li>Check console and network tabs in dev tools.</li>
+            <li>Verify backend is running and check for any errors in the terminal.</li>
+            <li>Backend is using an in-memory sqlite database. To start over with a clean slate ctrl-c and re-run main.</li>
+          </ul>
+        </p>
+      </div>
+    </div>
+
+    <script src="/dist/main.js"></script>
+  </body>
+</html>

@@ -91,7 +91,7 @@ data VerificationFailure
 -- Use with AuthenticatorAttestationResponse or AuthenticatorAssertionResponse.
 data PublicKeyCredential response = PublicKeyCredential
   { id :: Text
-  , rawId :: Base64UrlByteString
+  , rawId :: CredentialId
   , response :: response
   , typ :: PublicKeyCredentialType
   } deriving stock (Show)
@@ -127,7 +127,7 @@ data AuthenticatorAssertionResponse = AuthenticatorAssertionResponse
   { clientDataJSON :: ByteString
   , authenticatorData :: ByteString
   , signature :: ByteString
-  , userHandler :: Maybe ByteString
+  , userHandle :: Maybe ByteString
   } deriving stock (Eq, Show, Generic)
 
 instance FromJSON AuthenticatorAssertionResponse where
@@ -136,7 +136,7 @@ instance FromJSON AuthenticatorAssertionResponse where
       <$> fmap unBase64UrlByteString (o .: "clientDataJSON")
       <*> fmap unBase64UrlByteString (o .: "authenticatorData")
       <*> fmap unBase64UrlByteString (o .: "signature")
-      <*> fmap (fmap unBase64UrlByteString) (o .: "userHandler")
+      <*> fmap (fmap unBase64UrlByteString) (o .:? "userHandle")
 
 -- | 5.3. Parameters for Credential Generation (dictionary PublicKeyCredentialParameters)
 data PublicKeyCredentialParameters = PublicKeyCredentialParameters
@@ -269,8 +269,8 @@ data PublicKeyCredentialRequestOptions = PublicKeyCredentialRequestOptions
   } deriving stock (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialRequestOptions where
-  toEncoding = AE.genericToEncoding defaultOptions { omitNothingFields = True}
-  toJSON = AE.genericToJSON defaultOptions { omitNothingFields = True}
+  toEncoding = AE.genericToEncoding defaultOptions { omitNothingFields = True }
+  toJSON = AE.genericToJSON defaultOptions { omitNothingFields = True }
 
 -- | 5.8.5. Cryptographic Algorithm Identifier (typedef COSEAlgorithmIdentifier)
 data COSEAlgorithmIdentifier
@@ -457,8 +457,6 @@ newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: Byt
 -- | AAGUID of the authenticator as described in 6.5.1.
 --
 -- https://www.w3.org/TR/webauthn-2/#aaguid
---
--- TODO: confirm this *has* to be base16 encoded
 newtype AAGUID = AAGUID { unAAGUID :: ByteString }
   deriving stock (Show, Eq)
   deriving (FromJSON, ToJSON) via Base64UrlByteString

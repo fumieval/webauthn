@@ -1,0 +1,53 @@
+cabal-version:       >=1.10
+
+name:                webauthn-demo
+version:             0.1.0.0
+-- synopsis:
+-- description:
+-- bug-reports:
+-- license:
+license-file:        LICENSE
+author:              Maciej Kazulak
+maintainer:          kazulakm@gmail.com
+-- copyright:
+-- category:
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+library
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  default-extensions:
+      LambdaCase
+    , DerivingStrategies
+    , DerivingVia
+    , DuplicateRecordFields
+    , FlexibleContexts
+    , NamedFieldPuns
+    , OverloadedStrings
+    , RecordWildCards
+    , ScopedTypeVariables
+    , StandaloneDeriving
+  exposed-modules:
+      Lib
+  build-depends:
+      base >=4.13 && <4.14
+    , bytestring
+    , aeson
+    , containers
+    , http-types
+    , scotty
+    , text
+    , mtl
+    , stm
+    , sqlite-simple
+    , webauthn
+    , x509-store
+
+executable webauthn-demo
+  hs-source-dirs:      src-bin
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:
+      base >=4.13 && <4.14
+    , webauthn-demo

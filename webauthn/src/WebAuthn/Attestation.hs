@@ -22,7 +22,7 @@ import qualified WebAuthn.Attestation.Statement.FIDOU2F as FIDOU2F
 import qualified WebAuthn.Attestation.Statement.Packed as Packed
 import qualified WebAuthn.Attestation.Statement.TPM as TPM
 import WebAuthn.AuthenticatorData
-import WebAuthn.Common (verifyTokenBinding)
+import qualified WebAuthn.Common as Common
 import WebAuthn.Signature ( hasMatchingAlg, parsePublicKey, PublicKey )
 import WebAuthn.Types
 
@@ -56,15 +56,7 @@ data AttestationStatement
 
 -- | 7.1 steps 7. to 10.
 verifyCollectedClientData :: Origin -> Challenge -> Maybe Text -> CollectedClientData -> Either VerificationFailure ()
-verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientData{..} = do
-  -- 7.
-  unless (typ == WebAuthnCreate) $ Left InvalidType
-  -- 8.
-  unless (challenge == rpChallenge) $ Left $ MismatchedChallenge rpChallenge challenge
-  -- 9.
-  unless (origin == rpOrigin) $ Left $ MismatchedOrigin rpOrigin origin
-  -- 10.
-  verifyTokenBinding rpTokenBinding tokenBinding
+verifyCollectedClientData = Common.verifyCollectedClientData WebAuthnCreate
 
 -- | 7.1 steps 13. to 15.
 verifyAttestationObject :: RpId -> Bool -> AttestationObject -> Either VerificationFailure ()

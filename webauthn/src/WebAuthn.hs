@@ -85,7 +85,7 @@ verifyRegistration :: MonadIO m
   -> PublicKeyCredential AuthenticatorAttestationResponse -- ^ credential from navigator.credential.create()
   -> X509.CertificateStore                                -- ^ trust anchors
   -> m (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))
-verifyRegistration rpId rpOrigin rpTokenBinding  options credential trustAnchors = runExceptT $ do
+verifyRegistration rpId rpOrigin rpTokenBinding options credential trustAnchors = runExceptT $ do
   -- 1. Let options be a new PublicKeyCredentialCreationOptions structure configured to the Relying Party's needs for the ceremony.
   -- Passed as argument.
   --

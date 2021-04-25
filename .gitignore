@@ -4,3 +4,5 @@ dist-newstyle
 .ghc.environment*
 .DS_Store
 .vscode
+node_modules/
+webauthn-demo/frontend/dist
