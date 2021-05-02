@@ -8,6 +8,7 @@ import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.List.NonEmpty (NonEmpty)
 import qualified Crypto.Hash as H
@@ -74,7 +75,7 @@ verifyPubKey params ad = do
   case pubKey of
     Just k -> do
       parsedPubKey <- parsePublicKey k
-      unless (any (hasMatchingAlg parsedPubKey) (NE.map (alg :: PublicKeyCredentialParameters -> COSEAlgorithmIdentifier) params)) $ Left MalformedAuthenticatorData
+      unless (any (hasMatchingAlg parsedPubKey) (NE.map (alg :: PublicKeyCredentialParameters -> COSEAlgorithmIdentifier) params)) $ Left MismatchedPublicKeyAlgorithm
       pure $ Just parsedPubKey
     -- non present public key will fail anyway or the fmt == 'none'
     Nothing -> pure Nothing
@@ -100,5 +101,5 @@ attestationObjectDecode = do
 parseAttestationObject :: ByteString -> Either VerificationFailure (AttestationObject, ByteString)
 parseAttestationObject bs = do
   AttestationObjectRaw{..} <- bimap (CBORDecodeError "AttestationObject") snd $ CBOR.deserialiseFromBytes attestationObjectDecode $ BL.fromStrict bs
-  authData <- first (const MalformedAuthenticatorData) $ parseAuthenticatorData authDataRaw
+  authData <- first (MalformedAuthenticatorData . T.pack) $ parseAuthenticatorData authDataRaw
   pure (AttestationObject{..}, authDataRaw)

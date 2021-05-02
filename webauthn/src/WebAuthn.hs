@@ -127,7 +127,7 @@ verifyRegistration rpId rpOrigin rpTokenBinding options credential trustAnchors 
   -- 20. to 24.
   -- Not implemented here. Out of scope.
   case attestedCredentialData authData of
-    Nothing -> throwE MalformedAuthenticatorData
+    Nothing -> throwE $ MalformedAuthenticatorData "AttestedCredentialData missing"
     Just x -> pure (x, attStmt, signCount authData)
 
  
@@ -198,7 +198,7 @@ verifyAssertion rpId rpOrigin rpTokenBinding options credential credentialPublic
   -- 15. to 18.
   let PublicKeyCredentialRequestOptions{ userVerification } = options
       AuthenticatorAssertionResponse{ authenticatorData, signature } = response
-  authData <- first (const MalformedAuthenticatorData) (parseAuthenticatorData authenticatorData)
+  authData <- first (MalformedAuthenticatorData . T.pack) (parseAuthenticatorData authenticatorData)
   Assertion.verifyAuthenticatorData rpId (userVerification == Just Required) authData
   -- 19. to 20.
   let hash = H.hash clientDataJSON :: H.Digest H.SHA256

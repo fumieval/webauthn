@@ -30,6 +30,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 import Crypto.Hash (SHA256, Digest)
 import qualified Codec.CBOR.Read as CBOR
+import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail ( MonadFail(fail) )
 import Data.ByteArray (ByteArrayAccess)
@@ -38,7 +39,6 @@ import qualified Data.List.NonEmpty as NE
 import GHC.Generics (Generic)
 import Data.Word (Word16, Word32)
 import Data.Int (Int32)
-import Data.Void ( Void )
 
 
 -- | RFC4648, Secion 5 with all trailing '=' characters omitted (as permitted by 3.2)
@@ -74,7 +74,7 @@ data VerificationFailure
   | UnsupportedAttestationFormat Text
   | UnsupportedAlgorithm Int
   | MalformedPublicKey
-  | MalformedAuthenticatorData
+  | MalformedAuthenticatorData Text
   | MalformedX509Certificate Text
   | MalformedSignature
   | SignatureFailure String
@@ -83,6 +83,7 @@ data VerificationFailure
   | InvalidSignCount
   -- 7.2 step 5. credential.id is not present in options.allowCredentials
   | CredentialNotAllowed
+  | MismatchedPublicKeyAlgorithm
   deriving stock (Show, Eq)
 
 -- | 5.1. PublicKeyCredential Interface
@@ -90,7 +91,7 @@ data VerificationFailure
 -- Extensions are not implemented.
 -- Use with AuthenticatorAttestationResponse or AuthenticatorAssertionResponse.
 data PublicKeyCredential response = PublicKeyCredential
-  { id :: Text
+  { id :: CredentialId
   , rawId :: CredentialId
   , response :: response
   , typ :: PublicKeyCredentialType
@@ -218,6 +219,7 @@ data AuthenticatorSelection = AuthenticatorSelection
   , requireResidentKey :: Maybe Bool
   , userVerification :: Maybe UserVerificationRequirement
   } deriving stock (Show, Eq, Generic)
+    deriving anyclass (FromJSON)
 
 instance ToJSON AuthenticatorSelection where
   toEncoding = AE.genericToEncoding defaultOptions { omitNothingFields = True }
@@ -232,6 +234,12 @@ instance ToJSON AuthenticatorAttachment where
     Platform -> "platform"
     CrossPlatform -> "cross-platform"
 
+instance FromJSON AuthenticatorAttachment where
+  parseJSON = AE.withText "AuthenticatorAttachment" $ \case
+    "platform" -> pure Platform
+    "cross-platform" -> pure CrossPlatform
+    x -> fail $ "AuthenticatorAttachment: unkown value: " <> T.unpack x
+
 -- | 5.4.6. Resident Key Requirement Enumeration (enum ResidentKeyRequirement)
 data ResidentKeyRequirement
   = ResidentKeyDiscouraged
@@ -245,6 +253,13 @@ instance ToJSON ResidentKeyRequirement where
     ResidentKeyPreferred -> "preferred"
     ResidentKeyRequired -> "required"
 
+instance FromJSON ResidentKeyRequirement where
+  parseJSON = AE.withText "ResidentKeyRequirement" $ \case
+    "discouraged" -> pure ResidentKeyDiscouraged 
+    "preferred" -> pure ResidentKeyPreferred 
+    "required" -> pure ResidentKeyRequired 
+    x -> fail $ "ResidentKeyRequirement: unkown value: " <> T.unpack x
+
 -- | 5.4.7. Attestation Conveyance Preference Enumeration (enum AttestationConveyancePreference)
 data AttestationConveyancePreference = None | Direct | Indirect | Enterprise
   deriving stock (Eq, Show, Generic)
@@ -255,6 +270,14 @@ instance ToJSON AttestationConveyancePreference where
     Direct -> "direct"
     Indirect -> "indirect"
     Enterprise -> "enterprise"
+
+instance FromJSON AttestationConveyancePreference where
+  parseJSON = AE.withText "AttestationConveyancePreference" $ \case
+    "none" -> pure None 
+    "direct" -> pure Direct 
+    "indirect" -> pure Indirect 
+    "enterprise" -> pure Enterprise
+    x -> fail $ "AttestationConveyancePreference: unknown value: " <> T.unpack x
 
 -- | 5.5. Options for Assertion Generation (dictionary PublicKeyCredentialRequestOptions)
 --
@@ -417,6 +440,13 @@ instance ToJSON UserVerificationRequirement where
     Preferred -> "preferred"
     Discouraged -> "discouraged"
 
+instance FromJSON UserVerificationRequirement where
+  parseJSON = AE.withText "UserVerificationRequirement" $ \case
+    "required" -> pure Required
+    "preferred" -> pure Preferred
+    "discouraged" -> pure Discouraged
+    x -> fail $ "UserVerificationRequirement: unknown value: " <> T.unpack x
+
 -- | 6.1. Authenticator Data
 data AuthenticatorData = AuthenticatorData
   { rpIdHash :: Digest SHA256
@@ -424,7 +454,7 @@ data AuthenticatorData = AuthenticatorData
   , userVerified :: Bool
   , signCount :: SignCount
   , attestedCredentialData :: Maybe AttestedCredentialData
-  , extensions :: Maybe ByteString
+  , extensions :: Maybe CBOR.Term
   } deriving stock (Eq, Show)
 
 newtype SignCount = SignCount { unSignCount :: Word32 }
@@ -475,7 +505,7 @@ newtype Challenge = Challenge { unChallenge :: ByteString }
 -- appeared in Level 2
 
 -- placeholder
-type Extensions = Void
+type Extensions = AE.Value
 
 -- newtype AuthnSel = AuthnSel [Base64UrlByteString]
 --   deriving stock (Show, Eq, Generic)

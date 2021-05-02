@@ -44,7 +44,7 @@ verify
   -> Digest SHA256
   -> Either VerificationFailure ()
 verify (Stmt cert sig) AuthenticatorData{..} clientDataHash = do
-  AttestedCredentialData{..} <- maybe (Left MalformedAuthenticatorData) pure attestedCredentialData
+  AttestedCredentialData{..} <- maybe (Left $ MalformedAuthenticatorData "AttestedCredentialData missing") pure attestedCredentialData
   m :: Map Int CBOR.Term <- first (CBORDecodeError "verifyFIDOU2F") $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey credentialPublicKey
   publicKeyU2F <- maybe (Left MalformedPublicKey) pure $ do
       CBOR.TBytes x <- Map.lookup (-2) m

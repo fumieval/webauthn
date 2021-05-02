@@ -21,6 +21,7 @@ let
 
       webauthn = self.callCabal2nix "webauthn" ./webauthn {};
       webauthn-demo = self.callCabal2nix "webauthn-demo" ./webauthn-demo/backend { inherit (self) webauthn; };
+      webauthn-test = self.callCabal2nix "webauthn-test" ./webauthn-test/backend { inherit (self) webauthn; };
       wai-middleware-webauthn = self.callCabal2nix "wai-middleware-webauthn" ./wai-middleware-webauthn { inherit (self) webauthn; };
       wai-middleware-webauthn-demo = self.callCabal2nix "demo" ./wai-middleware-webauthn/demo { inherit (self) wai-middleware-webauthn; };
     };
@@ -31,6 +32,7 @@ in
     packages = ps: with hpkgs; [
       webauthn
       webauthn-demo
+      webauthn-test
       wai-middleware-webauthn
       wai-middleware-webauthn-demo
       ];

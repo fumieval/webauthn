@@ -55,8 +55,8 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
         verifyX509Sig (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig "Packed"
         certMeetsCriteria x509Cert
     Nothing -> do
-      adPubKey <- maybe (Left MalformedAuthenticatorData) return mAdPubKey
-      unless (hasMatchingAlg adPubKey algo) $ Left MalformedAuthenticatorData
+      adPubKey <- maybe (Left $ MalformedAuthenticatorData "missing public key") pure mAdPubKey
+      unless (hasMatchingAlg adPubKey algo) $ Left MismatchedPublicKeyAlgorithm
       verifySig adPubKey sig dat
     where
         certMeetsCriteria :: X509.Certificate -> Either VerificationFailure ()
@@ -65,8 +65,8 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
                 mX509Ext = mX509Exts >>= findProperExtension [1,3,6,1,4,1,45724,1,1,4]
                 dnElements = X509.getDistinguishedElements $ X509.certSubjectDN c
             adAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID provided in attested credential data") (return . unAAGUID . aaguid) $ attestedCredentialData ad
-            certAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID present in x509 extensions") (decodeAAGUID . X509.extRawContent) mX509Ext
-            unless (certAAGUID == adAAGUID) . Left . MalformedX509Certificate $ "AAGUID in attested credential data doesn't match the one in x509 extensions"
+            -- certAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID present in x509 extensions") (decodeAAGUID . X509.extRawContent) mX509Ext
+            -- unless (certAAGUID == adAAGUID) . Left . MalformedX509Certificate $ "AAGUID in attested credential data doesn't match the one in x509 extensions"
             unless ( 
                 (hasDnElement X509.DnCountry dnElements)
                 &&

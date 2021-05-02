@@ -2,6 +2,7 @@
 module WebAuthn.Signature
   ( PublicKey(..)
   , parsePublicKey
+  , parsePublicKeyTerm
   , verifySig
   , verifyX509Sig
   , encodeECSSignature
@@ -56,7 +57,7 @@ parsePublicKey :: CredentialPublicKey -> Either VerificationFailure PublicKey
 parsePublicKey pub = do
   m <- either (Left . CBORDecodeError "parsePublicKey") pure
     $ CBOR.deserialiseOrFail $ BL.fromStrict $ unCredentialPublicKey pub
-  maybe (Left $ MalformedPublicKey) pure $ do
+  maybe (Left MalformedPublicKey) pure $ do
       CBOR.TInt ty <- Map.lookup 3 m
       case ty of
         -7 -> do
@@ -66,12 +67,34 @@ parsePublicKey pub = do
           c <- case crv of
             1 -> pure EC.SEC_p256r1
             _ -> fail $ "parsePublicKey: unknown curve: " ++ show crv
-          return $ PubEC $ EC.PublicKey (EC.getCurveByName c) (EC.Point (fromOctet x) (fromOctet y))
+          pure $ PubEC $ EC.PublicKey (EC.getCurveByName c) (EC.Point (fromOctet x) (fromOctet y))
         -257 -> do
           CBOR.TBytes n <- Map.lookup (-1) m
           CBOR.TBytes e <- Map.lookup (-2) m
-          return $ PubRSA $ RSA.PublicKey 256 (fromOctet n) (fromOctet e)
+          pure $ PubRSA $ RSA.PublicKey 256 (fromOctet n) (fromOctet e)
         _ -> fail $ "parsePublicKey: unknown algorithm"
+
+parsePublicKeyTerm :: CBOR.Term -> Either String PublicKey
+parsePublicKeyTerm = \case
+  CBOR.TMap xs ->
+    let m = Map.fromList xs
+    in maybe (Left "parsePublicKeyTerm: failure") pure $ do
+      CBOR.TInt ty <- Map.lookup (CBOR.TInt 3) m
+      case ty of
+        -7 -> do
+          CBOR.TInt crv <- Map.lookup (CBOR.TInt (-1)) m
+          CBOR.TBytes x <- Map.lookup (CBOR.TInt (-2)) m
+          CBOR.TBytes y <- Map.lookup (CBOR.TInt (-3)) m
+          c <- case crv of
+            1 -> pure EC.SEC_p256r1
+            _ -> fail $ "parsePublicKeyTerm: unknown curve: " ++ show crv
+          pure $ PubEC $ EC.PublicKey (EC.getCurveByName c) (EC.Point (fromOctet x) (fromOctet y))
+        -257 -> do
+          CBOR.TBytes n <- Map.lookup (CBOR.TInt (-1)) m
+          CBOR.TBytes e <- Map.lookup (CBOR.TInt (-2)) m
+          pure $ PubRSA $ RSA.PublicKey 256 (fromOctet n) (fromOctet e)
+        _ -> fail $ "parsePublicKeyTerm: unknown algorithm"
+  _ -> Left "parsePublicKeyTerm: failure"
 
 fromOctet :: B.ByteString -> Integer
 fromOctet = B.foldl' (\r x -> r `unsafeShiftL` 8 .|. fromIntegral x) 0

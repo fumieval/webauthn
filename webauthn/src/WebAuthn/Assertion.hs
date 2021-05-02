@@ -2,11 +2,8 @@ module WebAuthn.Assertion where
 
 import Control.Monad ( when, unless )
 import qualified Crypto.Hash as H
-import Data.Bifunctor (bimap)
-import qualified Data.ByteString.Base64.URL as B64URL
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
-import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
 import qualified WebAuthn.Common as Common
@@ -17,8 +14,7 @@ verifyCredentialAllowed
   :: PublicKeyCredentialRequestOptions
   -> PublicKeyCredential a
   -> Either VerificationFailure ()
-verifyCredentialAllowed options PublicKeyCredential{ id = b64pkid } = do
-  clientPkid <- bimap (JSONDecodeError . T.unpack) CredentialId $ B64URL.decodeBase64Unpadded $ TE.encodeUtf8 b64pkid
+verifyCredentialAllowed options PublicKeyCredential{ id = clientPkid } = do
   case allowCredentials options of
     Just xs -> do
       let notFound = null $ NE.filter (\PublicKeyCredentialDescriptor{ id = pkcdId } -> clientPkid == pkcdId) xs

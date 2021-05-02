@@ -1,6 +1,7 @@
 packages:
   ./webauthn
   ./webauthn-demo/backend
+  ./webauthn-test/backend
   ./wai-middleware-webauthn/
   ./wai-middleware-webauthn/demo/
 

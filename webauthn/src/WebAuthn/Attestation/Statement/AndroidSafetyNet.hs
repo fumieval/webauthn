@@ -13,7 +13,6 @@ import qualified Data.Text.Encoding as TE
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL hiding (pack)
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -62,7 +61,9 @@ data JWTHeader = JWTHeader
 decode :: CBOR.Term -> CBOR.Decoder s StmtSafetyNet
 decode (CBOR.TMap xs) = do
   let m = Map.fromList xs
-      CBOR.TBytes response = fromMaybe (CBOR.TString "response") (Map.lookup (CBOR.TString "response") m)
+  response <- case Map.lookup (CBOR.TString "response") m of
+                Just (CBOR.TBytes response) -> pure response
+                _ -> fail "decodeSafetyNet: missing response"
   case B.split (fromIntegral . ord $ '.') response of 
     (h : p : s : _) -> StmtSafetyNet (Base64UrlByteString h) (Base64UrlByteString p) (B64URL.decodeBase64Lenient s) <$> getCertificateChain h
     _ -> fail "decodeSafetyNet: response was not a JWT"
