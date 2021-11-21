@@ -1,4 +1,5 @@
- {-# LANGUAGE OverloadedStrings #-} 
+{-# LANGUAGE OverloadedStrings #-} 
+{-# LANGUAGE DuplicateRecordFields #-}
 module WebAuthn.AndroidSafetyNet (
   decode,
   verify
@@ -30,6 +31,7 @@ import Data.Char (ord)
 import Data.Bifunctor (first)
 import WebAuthn.Signature (verifyX509Sig)
 import Control.Error.Util (hoistEither, failWith)
+import Time.Types (DateTime)
 
 decode :: CBOR.Term -> CBOR.Decoder s StmtSafetyNet
 decode (CBOR.TMap xs) = do
@@ -56,8 +58,9 @@ verify :: MonadIO m => X509.CertificateStore
   -> StmtSafetyNet 
   -> B.ByteString
   -> Digest SHA256
+  -> Maybe DateTime
   -> ExceptT VerificationFailure m ()
-verify cs sf authDataRaw clientDataHash = do
+verify cs sf authDataRaw clientDataHash maybeNow = do
   verifyJWS
   let dat = authDataRaw <> BA.convert clientDataHash
   as <- extractAndroidSafetyNet
@@ -68,7 +71,7 @@ verify cs sf authDataRaw clientDataHash = do
       $ J.eitherDecode (BL.fromStrict . Base64URL.decodeLenient . unBase64ByteString $ payload sf)
     verifyJWS = do
       let dat = unBase64ByteString (header sf) <> "." <> unBase64ByteString (payload sf)
-      res <- liftIO $ X509.validateDefault cs (X509.exceptionValidationCache []) ("attest.android.com", "") (certificates sf)
+      res <- liftIO $ validateCert cs (X509.exceptionValidationCache []) ("attest.android.com", "") (certificates sf)
       case res of
         [] -> pure ()
         es -> throwE (MalformedX509Certificate (pack $ show es))
@@ -76,6 +79,7 @@ verify cs sf authDataRaw clientDataHash = do
       let pub = X509.certPubKey $ X509.getCertificate cert
       hoistEither $ verifyX509Sig rs256 pub dat (signature sf) "AndroidSafetyNet"
     signCert (X509.CertificateChain cschain) = headMay cschain
+    validateCert = X509.validate X509.HashSHA256 X509.defaultHooks (X509.defaultChecks { X509.checkAtTime = maybeNow})
 
 rs256 :: X509.SignatureALG
 rs256 = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA  

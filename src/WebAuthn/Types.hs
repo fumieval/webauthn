@@ -2,7 +2,11 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE RecordWildCards #-}
 module WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)
@@ -30,8 +34,8 @@ module WebAuthn.Types (
   , PublicKeyCredentialDescriptor(..)
   , AuthenticatorTransport(..)
   , PublicKeyCredentialType(..)
-  , PublicKeyCredentialCreationOptions(..)
-  , PubKeyCredParam (..)
+  , CredentialCreationOptions(..)
+  , defaultCredentialCreationOptions
   , Attestation (..)
   , Extensions (..)
   , AuthenticatorSelection (..)
@@ -40,7 +44,8 @@ module WebAuthn.Types (
   , AuthnSel
   , BiometricPerfBounds
   , AuthenticatorAttachment (..)
-  ) where
+  , pubKeyCredAlgFromInt
+  ,ccoRequireUserVerification) where
 
 import Prelude hiding (fail)
 import Data.Aeson as J
@@ -63,6 +68,7 @@ import qualified Data.ByteString.Base64.URL as Base64
 import Data.ByteString.Base16 as Base16 (decodeLenient, encode )
 import qualified Data.Hashable as H
 import qualified Data.Map as Map
+import qualified Data.ByteString.Char8 as B8
 import Data.Text (Text)
 import Data.Text.Encoding ( decodeUtf8, encodeUtf8 )
 import qualified Data.Text as T
@@ -73,15 +79,22 @@ import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Read as CBOR
 import qualified Codec.Serialise as CBOR
 import Control.Monad.Fail ( MonadFail(fail) )
-import GHC.Generics (Generic)
 import qualified Data.X509 as X509
 import Data.Aeson.Types (Pair, typeMismatch)
 import Data.Char ( toLower, toUpper )
 import Data.ByteArray (ByteArrayAccess)
-import Data.Aeson
-    ( SumEncoding(UntaggedValue), genericToJSON, genericParseJSON )
-import Data.List.NonEmpty
-import Control.Error (fromMaybe)
+import Data.Aeson (SumEncoding(UntaggedValue))
+import Data.List.NonEmpty as NE ( NonEmpty(..) )
+import Data.Aeson (genericToJSON)
+import Deriving.Aeson
+    ( Generic,
+      CamelToSnake,
+      CustomJSON(CustomJSON),
+      FieldLabelModifier,
+      OmitNothingFields,
+      StripPrefix )
+import Data.String ( IsString(..) )
+import Data.Maybe (fromMaybe)
 
 newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
 
@@ -98,7 +111,13 @@ instance FromJSON Base64ByteString where
 
 -- | 13.1. Cryptographic Challenges
 newtype Challenge = Challenge { rawChallenge :: ByteString }
-  deriving (Show, Eq, Ord, Generic, H.Hashable, CBOR.Serialise)
+  deriving (Eq, Ord, H.Hashable, CBOR.Serialise)
+
+instance IsString Challenge where
+  fromString = Challenge . Base64.decodeLenient . B8.pack
+
+instance Show Challenge where
+  show = show . Base64.encode . rawChallenge
 
 instance ToJSON Challenge where
   toJSON = toJSON . decodeUtf8 . Base64.encode . rawChallenge
@@ -238,18 +257,15 @@ instance J.ToJSON AttestedCredentialData
 
 -- | 5.4.3. User Account Parameters for Credential Generation
 data User = User
-  { id :: Text
-  , name :: T.Text
-  , displayName ::  T.Text
+  { userId :: Base64ByteString
+  , userName :: T.Text
+  , userDisplayName ::  T.Text
   } deriving (Generic, Show, Eq)
-
-instance ToJSON User where
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True}
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "user", CamelToSnake), OmitNothingFields] User
 
 instance CBOR.Serialise User where
   encode (User i n d) = CBOR.encode $ Map.fromList
-    ([("id" :: Text, CBOR.TBytes (encodeUtf8 i))]
+    ([("id" :: Text, CBOR.TBytes (unBase64ByteString i))]
       <> [("name" :: Text, CBOR.TString n)]
       <> [("displayName" :: Text, CBOR.TString d)])
   decode = do
@@ -257,12 +273,12 @@ instance CBOR.Serialise User where
     CBOR.TBytes i <- maybe (fail "id") pure $ Map.lookup ("id" :: Text) m
     CBOR.TString n <-  maybe (fail "name") pure $ Map.lookup "name" m
     CBOR.TString d <-  maybe (fail "name") pure $ Map.lookup "displayName" m
-    return $ User (decodeUtf8 i) n d
+    return $ User (Base64ByteString i) n d
 
 data VerificationFailure
   = InvalidType
-  | MismatchedChallenge
-  | MismatchedOrigin
+  | MismatchedChallenge Challenge Challenge
+  | MismatchedOrigin Origin Origin
   | UnexpectedPresenceOfTokenBinding
   | MismatchedTokenBinding
   | JSONDecodeError String
@@ -280,28 +296,28 @@ data VerificationFailure
   | NonceCheckFailure
   deriving Show
 
-data AndroidSafetyNet = AndroidSafetyNet {
-  timestampMs :: Integer
+data AndroidSafetyNet = AndroidSafetyNet
+  { timestampMs :: Integer
   , nonce :: [Char]
   , apkPackageName :: Text
   , apkCertificateDigestSha256 :: [Text]
   , ctsProfileMatch :: Bool
   , basicIntegrity :: Bool
-} deriving (Show, Generic)
+  } deriving (Show, Generic)
 
 instance  FromJSON AndroidSafetyNet
 
-data StmtSafetyNet = StmtSafetyNet {
-  header :: Base64ByteString
+data StmtSafetyNet = StmtSafetyNet
+  { header :: Base64ByteString
   , payload :: Base64ByteString
   , signature :: ByteString
   , certificates :: X509.CertificateChain
-} deriving Show
+  } deriving Show
 
-data JWTHeader = JWTHeader {
-  alg :: Text
+data JWTHeader = JWTHeader
+  { alg :: Text
   , x5c :: [Text]
-} deriving (Show, Generic)
+  } deriving (Show, Generic)
 
 instance FromJSON JWTHeader
 
@@ -320,21 +336,12 @@ instance ToJSON AuthenticatorTransport where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
-instance FromJSON AuthenticatorTransport where
-  parseJSON = genericParseJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
-
-data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor {
-  tipe :: PublicKeyCredentialType
-  , id :: Base64ByteString
-  , transports :: Maybe (NonEmpty AuthenticatorTransport)
-} deriving (Eq, Show, Generic)
-
-instance ToJSON PublicKeyCredentialDescriptor where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
-
-mapTipe :: String -> String
-mapTipe str = if str == "tipe" then "type" else str
+data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
+  { pkcdType :: PublicKeyCredentialType
+  , pkcdId :: Base64ByteString
+  , pkcdTransports :: Maybe (NonEmpty AuthenticatorTransport)
+  } deriving (Eq, Show, Generic)
+  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "pkcd", CamelToSnake), OmitNothingFields] PublicKeyCredentialDescriptor
 
 data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, Generic)
 
@@ -342,14 +349,14 @@ instance ToJSON UserVerification where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
-data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions {
-  challenge :: Challenge
+data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions
+  { challenge :: Challenge
   , timeout :: Maybe Integer
   , rpId :: Maybe Text
   , allowCredentials ::Maybe (NonEmpty PublicKeyCredentialDescriptor)
   , userVerification :: Maybe UserVerification
   -- extensions omitted as support is minimal https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialRequestOptions/extensions
-} deriving (Eq, Show, Generic)
+  } deriving (Eq, Show, Generic)
 
 instance ToJSON PublicKeyCredentialRequestOptions where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
@@ -364,15 +371,12 @@ instance ToJSON PubKeyCredAlg where
   toJSON ES256 = Number (-7)
   toJSON RS256 = Number (-257)
   toJSON PS256 = Number (-37)
-
-data PubKeyCredParam = PubKeyCredParam {
-  tipe :: PublicKeyCredentialType
-  , alg :: PubKeyCredAlg
-} deriving (Show, Eq, Generic)
-
-instance ToJSON PubKeyCredParam where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True, fieldLabelModifier = mapTipe}
+  
+pubKeyCredAlgFromInt :: Int -> Maybe PubKeyCredAlg
+pubKeyCredAlgFromInt = \case -7 -> Just ES256
+                             -257 -> Just RS256
+                             -37 -> Just PS256
+                             _ -> Nothing
 
 data Attestation = None | Direct | Indirect deriving (Eq, Show, Generic)
 
@@ -417,26 +421,49 @@ instance ToJSON AuthenticatorAttachment where
 data AuthenticatorSelection = AuthenticatorSelection {
   authenticatorAttachment :: Maybe AuthenticatorAttachment
   , requireResidentKey :: Maybe Bool
-  , userVerification :: Maybe UserVerification
+  , requireUserVerification :: Maybe UserVerification
 } deriving (Show, Eq, Generic)
 
 instance ToJSON AuthenticatorSelection where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
-data PublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions {
-  rp :: RelyingParty
-  , challenge :: Challenge
-  , user :: User
-  , pubKeyCredParams :: NonEmpty PubKeyCredParam
-  , timeout :: Maybe Integer
-  , attestation :: Maybe Attestation
-  , extensions :: Maybe Extensions
-  , authenticatorSelection :: Maybe AuthenticatorSelection
-  , excludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
-} deriving (Eq, Show, Generic)
+data CredentialCreationOptions = CredentialCreationOptions
+  { ccoRelyingParty :: RelyingParty
+  , ccoChallenge :: Challenge
+  , ccoUser :: User
+  , ccoCredParams :: NonEmpty PubKeyCredAlg
+  , ccoTimeout :: Maybe Integer
+  , ccoAttestation :: Maybe Attestation
+  , ccoExtensions :: Maybe Extensions
+  , ccoAuthenticatorSelection :: Maybe AuthenticatorSelection
+  , ccoExcludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
+  , ccoTokenBindingID :: Maybe Text
+  } deriving (Eq, Show, Generic)
+  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "cco", CamelToSnake), OmitNothingFields] CredentialCreationOptions
 
-instance ToJSON PublicKeyCredentialCreationOptions where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
+defaultCredentialCreationOptions
+  :: RelyingParty
+  -> Challenge
+  -> User
+  -> CredentialCreationOptions
+defaultCredentialCreationOptions ccoRelyingParty ccoChallenge ccoUser = CredentialCreationOptions
+  { ccoTimeout = Nothing
+  , ccoCredParams = ES256 NE.:| []
+  , ccoAttestation = Nothing
+  , ccoExtensions = Nothing
+  , ccoAuthenticatorSelection = Nothing
+  , ccoExcludeCredentials = Nothing
+  , ccoTokenBindingID = Nothing
+  , ..
+  }
 
+ccoRequireUserVerification :: CredentialCreationOptions -> Bool
+ccoRequireUserVerification opts = fromMaybe False $ do
+  ant <- ccoAuthenticatorSelection opts
+  uv <- requireUserVerification ant
+  pure $ case uv of
+    Discouraged -> False 
+    _ -> True
+
+  
