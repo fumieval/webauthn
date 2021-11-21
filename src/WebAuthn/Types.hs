@@ -45,7 +45,8 @@ module WebAuthn.Types (
   , BiometricPerfBounds
   , AuthenticatorAttachment (..)
   , pubKeyCredAlgFromInt
-  ,ccoRequireUserVerification) where
+  ,ccoRequireUserVerification
+  ) where
 
 import Prelude hiding (fail)
 import Data.Aeson as J
