@@ -1,4 +1,6 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -98,7 +100,7 @@ mkMiddleware :: Config Handler -> IO Middleware
 mkMiddleware Config{..} = do
   vTokens <- newIORef HM.empty
   libJSPath <- getDataFileName "lib.js"
-  cs <- X509.readCertificateStore certStore >>= \case
+  certificateStore <- X509.readCertificateStore certStore >>= \case
     Nothing -> fail $ "Failed to obtain certification store from " <> certStore
     Just a -> pure a
   let theRelyingParty = W.defaultRelyingParty origin "Display Name"
@@ -118,12 +120,14 @@ mkMiddleware Config{..} = do
         >>= sendResp . responseJSON
       ["register"] -> do
         body <- lazyRequestBody req
-        let (user, cdj, att, challenge) = CBOR.deserialise body
-        rg <- W.registerCredential cs
-            (defaultCredentialCreationOptions theRelyingParty challenge user)
-            cdj
-            att
-            Nothing
+        let (user, clientDataJSON, attestationObject, challenge) = CBOR.deserialise body
+        rg <- W.registerCredential
+          defaultRegisterCredentialArgs
+            { certificateStore
+            , options = defaultCredentialCreationOptions theRelyingParty challenge user
+            , clientDataJSON
+            , attestationObject
+            }
         case rg of
           Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
           Right cd -> do

@@ -1,5 +1,7 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -34,7 +36,9 @@ module WebAuthn (
   , CredentialId(..)
   -- * verfication
   , VerificationFailure(..)
+  , RegisterCredentialArgs(..)
   , registerCredential
+  , defaultRegisterCredentialArgs
   , CredentialCreationOptions(..)
   , defaultCredentialCreationOptions
   , VerifyArgs(..)
@@ -66,6 +70,7 @@ import Data.Serialize qualified as C
 import Data.Text (pack, Text)
 import Data.Text.Encoding (encodeUtf8)
 import Data.X509.CertificateStore qualified as X509
+import GHC.Records
 import Prelude hiding (fail)
 import WebAuthn.AndroidSafetyNet qualified as Android
 import WebAuthn.FIDOU2F qualified as U2F
@@ -130,13 +135,13 @@ decodeAttestation = do
   return (AttestationObject fmt stmt adRaw)
 
 encodeAttestation :: AttestationObject -> CBOR.Encoding
-encodeAttestation attestationObject = CBOR.encodeMapLen 3
+encodeAttestation AttestationObject{..} = CBOR.encodeMapLen 3
   <> CBOR.encodeString "fmt"
   <> encodeAttestationFmt
   <> CBOR.encodeString  "attStmt"
   where
     encodeAttestationFmt :: CBOR.Encoding
-    encodeAttestationFmt =  case attStmt attestationObject of
+    encodeAttestationFmt = case attStmt of
       AF_FIDO_U2F _ -> CBOR.encodeString "fido-u2f"
       AF_Packed _ -> CBOR.encodeString "packed"
       AF_TPM _ -> CBOR.encodeString "tpm"
@@ -144,63 +149,83 @@ encodeAttestation attestationObject = CBOR.encodeMapLen 3
       AF_AndroidSafetyNet _ -> CBOR.encodeString "android-safetynet"
       AF_None -> CBOR.encodeString "none"
 
+data RegisterCredentialArgs = RegisterCredentialArgs
+  { certificateStore :: X509.CertificateStore
+  , options :: CredentialCreationOptions
+  , clientDataJSON :: ByteString
+  , attestationObject :: ByteString
+  , now :: Maybe DateTime
+  , tokenBindingID :: Maybe Text
+  }
+
+defaultRegisterCredentialArgs :: RegisterCredentialArgs
+defaultRegisterCredentialArgs = RegisterCredentialArgs
+  { certificateStore = mempty
+  , options = error "CredentialCreationOptions"
+  , clientDataJSON = error "ClientDataJSON"
+  , attestationObject = error "ByteString"
+  , now = Nothing
+  , tokenBindingID = Nothing
+  }
+
+instance HasField "run" RegisterCredentialArgs (IO (Either VerificationFailure AttestedCredentialData)) where
+  getField = registerCredential
+
 -- | 7.1. Registering a New Credential
-registerCredential :: forall m. MonadIO m => X509.CertificateStore
-  -> CredentialCreationOptions
-  -> ByteString -- ^ clientDataJSON
-  -> ByteString -- ^ attestationObject
-  -> Maybe DateTime
+registerCredential :: forall m. MonadIO m
+  => RegisterCredentialArgs
   -> m (Either VerificationFailure AttestedCredentialData)
-registerCredential certStore opts@CredentialCreationOptions{..} clientDataJSON attestationObjectBS maybeNow = runExceptT $ do
+registerCredential RegisterCredentialArgs{attestationObject = rawAttObj, ..} = runExceptT $ do
   _ <- hoistEither runAttestationCheck
-  attestationObject <- hoistEither $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
-        $ CBOR.deserialiseFromBytes decodeAttestation
-        $ BL.fromStrict
-        $ attestationObjectBS
+  attestationObject@AttestationObject{..} <- hoistEither
+    $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
+    $ CBOR.deserialiseFromBytes decodeAttestation
+    $ BL.fromStrict rawAttObj
   ad@AuthenticatorData{..} <- hoistEither $ extractAuthData attestationObject
   mAdPubKey <- verifyPubKey ad
   -- TODO: extensions here
-  case attStmt attestationObject of
+  case attStmt of
     AF_FIDO_U2F s -> hoistEither $ U2F.verify s ad clientDataHash
-    AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey ad (authData attestationObject) clientDataHash
-    AF_TPM s -> hoistEither $ TPM.verify s ad (authData attestationObject) clientDataHash
-    AF_AndroidSafetyNet s -> Android.verify certStore s (authData attestationObject) clientDataHash maybeNow
+    AF_Packed s -> hoistEither $ Packed.verify s mAdPubKey ad authData clientDataHash
+    AF_TPM s -> hoistEither $ TPM.verify s ad authData clientDataHash
+    AF_AndroidSafetyNet s -> Android.verify certificateStore s authData clientDataHash now
     AF_None -> pure ()
-    _ -> throwE (UnsupportedAttestationFormat (pack $ show (attStmt attestationObject)))
+    _ -> throwE $ UnsupportedAttestationFormat $ pack $ show attStmt
 
   case attestedCredentialData of
     Nothing -> throwE $ MalformedAuthenticatorData "missing attestedCredentialData"
     Just c -> pure c
   where
+    CredentialCreationOptions{..} = options
     clientDataHash = hash clientDataJSON :: Digest SHA256
     runAttestationCheck = do
       ccd :: CollectedClientData <- either
         (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
       ccd._type == Create ?? InvalidType
       challenge == ccd.challenge ?? MismatchedChallenge challenge ccd.challenge
-      relyingParty.origin == ccd.origin ?? MismatchedOrigin relyingParty.origin ccd.origin
+      rp.origin == ccd.origin ?? MismatchedOrigin rp.origin ccd.origin
       case ccd.tokenBinding of
         TokenBindingUnsupported -> pure ()
         TokenBindingSupported -> pure ()
-        TokenBindingPresent t -> case opts.tokenBindingID of
+        TokenBindingPresent t -> case tokenBindingID of
           Nothing -> Left UnexpectedPresenceOfTokenBinding
           Just t'
             | t == t' -> pure ()
             | otherwise -> Left MismatchedTokenBinding
-    extractAuthData attestationObject = do
+    extractAuthData AttestationObject{..} = do
       ad <- either (Left . MalformedAuthenticatorData . pack) pure
-        $ C.runGet parseAuthenticatorData (authData attestationObject)
-      hash (encodeUtf8 relyingParty.id) == ad.rpIdHash ?? MismatchedRPID
+        $ C.runGet parseAuthenticatorData authData
+      hash (encodeUtf8 rp.id) == ad.rpIdHash ?? MismatchedRPID
       ad.userPresent ?? UserNotPresent
-      not opts.requireUserVerification || ad.userVerified ?? UserUnverified
+      not options.requireUserVerification || ad.userVerified ?? UserUnverified
       pure ad
     verifyPubKey :: AuthenticatorData -> ExceptT VerificationFailure m (Maybe PublicKey)
     verifyPubKey ad = do
       case ad.attestedCredentialData of
         Just k -> do
           parsedPubKey <- either throwE return $ parsePublicKey k.credentialPublicKey
-          unless (any (hasMatchingAlg parsedPubKey) credParams) $ throwE $ MalformedAuthenticatorData
-            $ "does not match " <> pack (show credParams)
+          unless (any (hasMatchingAlg parsedPubKey) pubKeyCredParams) $ throwE $ MalformedAuthenticatorData
+            $ "does not match " <> pack (show pubKeyCredParams)
           return $ Just parsedPubKey
         -- non present public key will fail anyway or the fmt == 'none'
         Nothing -> return Nothing
@@ -215,6 +240,9 @@ data VerifyArgs = VerifyArgs
   , signature :: ByteString
   , credentialPublicKey :: CredentialPublicKey
   }
+
+instance HasField "run" VerifyArgs (Either VerificationFailure ()) where
+  getField = verify
 
 -- | 7.2. Verifying an Authentication Assertion
 verify :: VerifyArgs

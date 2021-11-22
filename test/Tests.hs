@@ -3,7 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 import WebAuthn
-    ( registerCredential,
+    ( RegisterCredentialArgs(..),
       VerifyArgs(..),
       verify,
     )
@@ -117,26 +117,29 @@ fidoU2FAttestedKeyCredential = TestPublicKeyCredential
 fidoU2FAttestedTest = genericCredentialTest "FIDOU2F test" packedNonSelfAttestedKeyCredential Nothing
 
 genericCredentialTest :: String -> TestPublicKeyCredential -> Maybe DateTime -> TestTree
-genericCredentialTest name TestPublicKeyCredential{..} time = testCaseSteps name $ \step -> do
+genericCredentialTest name TestPublicKeyCredential{..} now = testCaseSteps name $ \step -> do
   step "Registeration check..."
-  Just store <- readCertificateStore "test/cacert.pem"
-  eth <- registerCredential store (defaultCredentialCreationOptions
-      (defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "webauthn")
-      challenge
-      (User (Base64ByteString "id") "name" "display name")) clientDataJSON attestationObject
-      time
+  Just certificateStore <- readCertificateStore "test/cacert.pem"
+  eth <- RegisterCredentialArgs
+      { options = defaultCredentialCreationOptions
+        (defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "webauthn")
+        challenge
+        (User (Base64ByteString "id") "display name")
+      , tokenBindingID = Nothing
+      , ..
+      }.run
   assertBool (show eth) (isRight eth)
   let Right cdata = eth
   step "Verification check..."
   let eth = verify VerifyArgs
         { challenge = getChallenge
         , relyingParty = defRp
-        , tokenBindingID = Nothing
         , requireVerification = False
         , clientDataJSON = getClientDataJSON
         , authenticatorData = getAuthenticatorData
         , signature = getSignature
         , credentialPublicKey = cdata.credentialPublicKey
+        , tokenBindingID = Nothing
         }
   assertBool (show eth) (isRight eth)
 
@@ -144,16 +147,15 @@ registrationTest :: TestTree
 registrationTest = testCaseSteps "Credentials Test" $ \step -> do
   step "Credential creation"
   let pkcco = CredentialCreationOptions
-        { relyingParty = defaultRelyingParty (Origin "https" "webauthn.biz" Nothing) "webauthn"
+        { rp = defaultRelyingParty (Origin "https" "webauthn.biz" Nothing) "webauthn"
         , challenge = Challenge "12343434"
-        , user = User (Base64ByteString "id") "name" "display name"
-        , credParams = ES256 :| []
+        , user = User (Base64ByteString "id") "display name"
+        , pubKeyCredParams = ES256 :| []
         , timeout = Nothing
         , attestation = Nothing
         , authenticatorSelection = Nothing
         , extensions = Nothing
-        , excludeCredentials = [PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))]
-        , tokenBindingID = Nothing
+        , excludeCredentials = Just [PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))]
         }
   let ref = [aesonQQ| {
     "rp":{"id":"webauthn.biz", "name": "webauthn"},

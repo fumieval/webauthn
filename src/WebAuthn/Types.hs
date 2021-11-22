@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
@@ -82,7 +83,6 @@ import Data.Text qualified as T
 import Data.Text.Read qualified as T
 import Data.X509 qualified as X509
 import Deriving.Aeson
-import Deriving.Aeson.Stock
 import GHC.Records
 import WebAuthn.Base
 
@@ -186,22 +186,19 @@ instance J.ToJSON AttestedCredentialData
 -- | 5.4.3. User Account Parameters for Credential Generation
 data User = User
   { id :: Base64ByteString
-  , name :: Text
   , displayName :: Text
   } deriving (Generic, Show, Eq)
-  deriving (FromJSON, ToJSON) via PrefixedSnake "user" User
+  deriving anyclass (FromJSON, ToJSON)
 
 instance CBOR.Serialise User where
-  encode (User i n d) = CBOR.encode $ Map.fromList
+  encode (User i d) = CBOR.encode $ Map.fromList
     ([("id" :: Text, CBOR.TBytes (unBase64ByteString i))]
-      <> [("name" :: Text, CBOR.TString n)]
       <> [("displayName" :: Text, CBOR.TString d)])
   decode = do
     m <- CBOR.decode
     CBOR.TBytes i <- maybe (fail "id") pure $ Map.lookup ("id" :: Text) m
-    CBOR.TString n <-  maybe (fail "name") pure $ Map.lookup "name" m
     CBOR.TString d <-  maybe (fail "name") pure $ Map.lookup "displayName" m
-    return $ User (Base64ByteString i) n d
+    return $ User (Base64ByteString i) d
 
 data VerificationFailure
   = InvalidType
@@ -357,32 +354,30 @@ instance ToJSON AuthenticatorSelection where
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
 data CredentialCreationOptions = CredentialCreationOptions
-  { relyingParty :: RelyingParty
-  , challenge :: Challenge
+  { rp :: RelyingParty
   , user :: User
-  , credParams :: NonEmpty PubKeyCredAlg
+  , challenge :: Challenge
+  , pubKeyCredParams :: NonEmpty PubKeyCredAlg
   , timeout :: Maybe Integer
+  , excludeCredentials :: Maybe [PublicKeyCredentialDescriptor]
+  , authenticatorSelection :: Maybe AuthenticatorSelection
   , attestation :: Maybe Attestation
   , extensions :: Maybe Extensions
-  , authenticatorSelection :: Maybe AuthenticatorSelection
-  , excludeCredentials :: [PublicKeyCredentialDescriptor]
-  , tokenBindingID :: Maybe Text
   } deriving (Eq, Show, Generic)
-  deriving ToJSON via CustomJSON '[FieldLabelModifier CamelToSnake, OmitNothingFields] CredentialCreationOptions
+  deriving ToJSON via CustomJSON '[OmitNothingFields] CredentialCreationOptions
 
 defaultCredentialCreationOptions
   :: RelyingParty
   -> Challenge
   -> User
   -> CredentialCreationOptions
-defaultCredentialCreationOptions relyingParty challenge user = CredentialCreationOptions
+defaultCredentialCreationOptions rp challenge user = CredentialCreationOptions
   { timeout = Nothing
-  , credParams = NE.fromList [ES256, RS256]
+  , pubKeyCredParams = NE.fromList [ES256, RS256]
   , attestation = Nothing
   , extensions = Nothing
   , authenticatorSelection = Nothing
-  , excludeCredentials = []
-  , tokenBindingID = Nothing
+  , excludeCredentials = Nothing
   , ..
   }
 
@@ -393,4 +388,3 @@ instance HasField "requireUserVerification" CredentialCreationOptions Bool where
     pure $ case uv of
       Discouraged -> False
       _ -> True
-
