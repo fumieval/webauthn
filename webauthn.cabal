@@ -29,6 +29,7 @@ library
   exposed-modules:
     WebAuthn
     WebAuthn.AndroidSafetyNet
+    WebAuthn.Base
     WebAuthn.FIDOU2F
     WebAuthn.Packed
     WebAuthn.Signature
@@ -53,7 +54,12 @@ library
     , x509-validation   >=1.6  && <1.7
 
   ghc-options:        -Wall -Wcompat
-  default-extensions: ImportQualifiedPost
+  default-extensions:
+    ImportQualifiedPost
+    GeneralisedNewtypeDeriving
+    DeriveGeneric
+    RecordWildCards
+    ScopedTypeVariables
 
 test-suite test-webauthn
   import:             base-common

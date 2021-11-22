@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DuplicateRecordFields #-}
@@ -143,19 +144,19 @@ encodeAttestation attestationObject = CBOR.encodeMapLen 3
       AF_None -> CBOR.encodeString "none"
 
 -- | 7.1. Registering a New Credential
-registerCredential :: MonadIO m => X509.CertificateStore
+registerCredential :: forall m. MonadIO m => X509.CertificateStore
   -> CredentialCreationOptions
   -> ByteString -- ^ clientDataJSON
   -> ByteString -- ^ attestationObject
   -> Maybe DateTime
   -> m (Either VerificationFailure AttestedCredentialData)
-registerCredential certStore opts clientDataJSON attestationObjectBS maybeNow = runExceptT $ do
+registerCredential certStore opts@CredentialCreationOptions{..} clientDataJSON attestationObjectBS maybeNow = runExceptT $ do
   _ <- hoistEither runAttestationCheck
   attestationObject <- hoistEither $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
         $ CBOR.deserialiseFromBytes decodeAttestation
         $ BL.fromStrict
         $ attestationObjectBS
-  ad <- hoistEither $ extractAuthData attestationObject
+  ad@AuthenticatorData{..} <- hoistEither $ extractAuthData attestationObject
   mAdPubKey <- verifyPubKey ad
   -- TODO: extensions here
   case attStmt attestationObject of
@@ -166,38 +167,37 @@ registerCredential certStore opts clientDataJSON attestationObjectBS maybeNow = 
     AF_None -> pure ()
     _ -> throwE (UnsupportedAttestationFormat (pack $ show (attStmt attestationObject)))
 
-  case attestedCredentialData ad of
+  case attestedCredentialData of
     Nothing -> throwE MalformedAuthenticatorData
     Just c -> pure c
   where
-    RelyingParty rpOrigin rpId _ _ = ccoRelyingParty opts
     clientDataHash = hash clientDataJSON :: Digest SHA256
     runAttestationCheck = do
-      CollectedClientData{..} <- either
+      ccd :: CollectedClientData <- either
         (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
-      clientType == Create ?? InvalidType
-      ccoChallenge opts == clientChallenge ?? MismatchedChallenge (ccoChallenge opts) clientChallenge
-      rpOrigin == clientOrigin ?? MismatchedOrigin rpOrigin clientOrigin
-      case clientTokenBinding of
+      ccd._type == Create ?? InvalidType
+      challenge == ccd.challenge ?? MismatchedChallenge challenge ccd.challenge
+      relyingParty.origin == ccd.origin ?? MismatchedOrigin relyingParty.origin ccd.origin
+      case ccd.tokenBinding of
         TokenBindingUnsupported -> pure ()
         TokenBindingSupported -> pure ()
-        TokenBindingPresent t -> case ccoTokenBindingID opts of
+        TokenBindingPresent t -> case opts.tokenBindingID of
           Nothing -> Left UnexpectedPresenceOfTokenBinding
           Just t'
             | t == t' -> pure ()
             | otherwise -> Left MismatchedTokenBinding
     extractAuthData attestationObject = do
       ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData (authData attestationObject)
-      hash (encodeUtf8 rpId) == rpIdHash ad ?? MismatchedRPID
-      userPresent ad ?? UserNotPresent
-      not (ccoRequireUserVerification opts) || userVerified ad ?? UserUnverified
+      hash (encodeUtf8 relyingParty.id) == ad.rpIdHash ?? MismatchedRPID
+      ad.userPresent ?? UserNotPresent
+      not opts.requireUserVerification || ad.userVerified ?? UserUnverified
       pure ad
+    verifyPubKey :: AuthenticatorData -> ExceptT VerificationFailure m (Maybe PublicKey)
     verifyPubKey ad = do
-      let pubKey = credentialPublicKey <$> attestedCredentialData ad
-      case pubKey of
+      case ad.attestedCredentialData of
         Just k -> do
-          parsedPubKey <- either throwE return $ parsePublicKey k
-          unless (any (hasMatchingAlg parsedPubKey) $ ccoCredParams opts) $ throwE MalformedAuthenticatorData
+          parsedPubKey <- either throwE return $ parsePublicKey k.credentialPublicKey
+          unless (any (hasMatchingAlg parsedPubKey) credParams) $ throwE MalformedAuthenticatorData
           return $ Just parsedPubKey
         -- non present public key will fail anyway or the fmt == 'none'
         Nothing -> return Nothing
@@ -222,11 +222,11 @@ verify challenge rp tbi verificationRequired clientDataJSON adRaw sig pub = do
 
 clientDataCheck :: WebAuthnType -> Challenge -> ByteString -> RelyingParty -> Maybe Text -> Either VerificationFailure ()
 clientDataCheck ctype challenge clientDataJSON rp tbi = do
-  ccd <-  first JSONDecodeError (J.eitherDecode $ BL.fromStrict clientDataJSON)
-  clientType ccd == ctype ?? InvalidType
-  challenge == clientChallenge ccd ?? MismatchedChallenge challenge (clientChallenge ccd)
-  rpOrigin rp == clientOrigin ccd ?? MismatchedOrigin (rpOrigin rp) (clientOrigin ccd)
-  verifyClientTokenBinding tbi (clientTokenBinding ccd)
+  ccd :: CollectedClientData <- first JSONDecodeError (J.eitherDecode $ BL.fromStrict clientDataJSON)
+  ccd._type == ctype ?? InvalidType
+  challenge == ccd.challenge ?? MismatchedChallenge challenge ccd.challenge
+  rp.origin == ccd.origin ?? MismatchedOrigin rp.origin ccd.origin
+  verifyClientTokenBinding tbi ccd.tokenBinding
 
 verifyClientTokenBinding :: Maybe Text -> TokenBinding -> Either VerificationFailure ()
 verifyClientTokenBinding tbi (TokenBindingPresent t) = case tbi of
@@ -238,10 +238,10 @@ verifyClientTokenBinding _ _ = pure ()
 
 verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
 verifyAuthenticatorData rp adRaw verificationRequired = do
-  ad <- first (const MalformedAuthenticatorData) (C.runGet parseAuthenticatorData adRaw)
-  hash (case rp of RelyingParty{ rpId } -> encodeUtf8 rpId) == rpIdHash ad ?? MismatchedRPID
-  userPresent ad ?? UserNotPresent
-  not verificationRequired || userVerified ad ?? UserUnverified
+  ad@AuthenticatorData{..} <- first (const MalformedAuthenticatorData) (C.runGet parseAuthenticatorData adRaw)
+  hash (encodeUtf8 rp.id) == rpIdHash ?? MismatchedRPID
+  userPresent ?? UserNotPresent
+  not verificationRequired || userVerified ?? UserUnverified
   pure ad
 
 (??) :: Bool -> e -> Either e ()

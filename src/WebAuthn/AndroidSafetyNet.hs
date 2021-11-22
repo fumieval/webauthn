@@ -1,5 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 module WebAuthn.AndroidSafetyNet (
   decode,
   verify
@@ -15,8 +16,8 @@ import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL hiding (pack)
-import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString.Base64 as Base64
 import qualified Data.ByteString.Base64.URL as Base64URL
@@ -47,9 +48,9 @@ getCertificateChain h = do
   let bs = BL.fromStrict $ Base64URL.decodeLenient h
   case J.eitherDecode bs of
     Left e -> fail ("android-safetynet: Response header decode failed: " <> show e)
-    Right jth -> do
-      if alg (jth ::JWTHeader) /= "RS256" then fail ("android-safetynet: Unknown signature alg " <> show (alg (jth :: JWTHeader))) else do
-        let x5cbs = Base64.decodeLenient . encodeUtf8 <$> x5c jth
+    Right (jth :: JWTHeader) -> do
+      if jth.alg /= "RS256" then fail ("android-safetynet: Unknown signature alg " <> show jth.alg) else do
+        let x5cbs = Base64.decodeLenient . encodeUtf8 <$> jth.x5c
         case X509.decodeCertificateChain (X509.CertificateChainRaw x5cbs) of
           Left e -> fail ("Certificate chain decode failed: " <> show e)
           Right cc -> pure cc
@@ -63,21 +64,21 @@ verify :: MonadIO m => X509.CertificateStore
 verify cs sf authDataRaw clientDataHash maybeNow = do
   verifyJWS
   let dat = authDataRaw <> BA.convert clientDataHash
-  as <- extractAndroidSafetyNet
+  as :: AndroidSafetyNet <- extractAndroidSafetyNet
   let nonceCheck = Base64.encode (BA.convert (hash dat :: Digest SHA256))
-  if nonceCheck /= BL.toStrict (BL.pack (nonce as)) then throwE NonceCheckFailure else pure ()
+  if nonceCheck /= B8.pack as.nonce then throwE NonceCheckFailure else pure ()
   where
     extractAndroidSafetyNet = ExceptT $ pure $ first JSONDecodeError
-      $ J.eitherDecode (BL.fromStrict . Base64URL.decodeLenient . unBase64ByteString $ payload sf)
+      $ J.eitherDecode (BL.fromStrict . Base64URL.decodeLenient $ unBase64ByteString sf.payload)
     verifyJWS = do
-      let dat = unBase64ByteString (header sf) <> "." <> unBase64ByteString (payload sf)
-      res <- liftIO $ validateCert cs (X509.exceptionValidationCache []) ("attest.android.com", "") (certificates sf)
+      let dat = unBase64ByteString sf.header <> "." <> unBase64ByteString sf.payload
+      res <- liftIO $ validateCert cs (X509.exceptionValidationCache []) ("attest.android.com", "") sf.certificates
       case res of
         [] -> pure ()
         es -> throwE (MalformedX509Certificate (pack $ show es))
-      cert <- failWith MalformedPublicKey (signCert $ certificates sf)
+      cert <- failWith MalformedPublicKey $ signCert sf.certificates
       let pub = X509.certPubKey $ X509.getCertificate cert
-      hoistEither $ verifyX509Sig rs256 pub dat (signature sf) "AndroidSafetyNet"
+      hoistEither $ verifyX509Sig rs256 pub dat sf.signature_ "AndroidSafetyNet"
     signCert (X509.CertificateChain cschain) = headMay cschain
     validateCert = X509.validate X509.HashSHA256 X509.defaultHooks (X509.defaultChecks { X509.checkAtTime = maybeNow})
 

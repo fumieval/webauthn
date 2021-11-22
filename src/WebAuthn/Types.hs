@@ -1,12 +1,11 @@
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 module WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)
@@ -36,7 +35,6 @@ module WebAuthn.Types (
   , PublicKeyCredentialType(..)
   , CredentialCreationOptions(..)
   , defaultCredentialCreationOptions
-  , ccoRequireUserVerification
   , Attestation (..)
   , Extensions (..)
   , AuthenticatorSelection (..)
@@ -73,63 +71,27 @@ import Crypto.Hash ( SHA256, Digest )
 import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.Aeson (genericToJSON)
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Types (Pair, typeMismatch)
-import Data.ByteArray (ByteArrayAccess)
+import Data.Aeson.Types (Pair)
 import Data.ByteString (ByteString)
-import Data.ByteString.Base16 as Base16 (decodeLenient, encode )
-import Data.ByteString.Base64.URL qualified as Base64
-import Data.ByteString.Char8 qualified as B8
 import Data.Char ( toLower, toUpper )
-import Data.Hashable qualified as H
 import Data.List.NonEmpty as NE
 import Data.Map qualified as Map
 import Data.Maybe
-import Data.String
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding ( decodeUtf8, encodeUtf8 )
-import Data.Text.Encoding qualified as T
 import Data.Text.Read qualified as T
 import Data.X509 qualified as X509
 import Deriving.Aeson
 import Deriving.Aeson.Stock
-newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Show, Eq, ByteArrayAccess)
-
-instance ToJSON Base64ByteString where
-  toJSON (Base64ByteString bs) = String $ decodeUtf8 $ Base64.encode bs
-
-instance FromJSON Base64ByteString where
-  parseJSON s@(String v) = do
-    let eth = Base64.decode (encodeUtf8 v)
-    case eth of
-      Left err -> typeMismatch ("Base64: " <> err) s
-      Right str -> pure (Base64ByteString str)
-  parseJSON oth = typeMismatch "Expecting String" oth
-
--- | 13.1. Cryptographic Challenges
-newtype Challenge = Challenge { rawChallenge :: ByteString }
-  deriving (Eq, Ord, Generic, H.Hashable, CBOR.Serialise)
-
-instance IsString Challenge where
-  fromString = Challenge . Base64.decodeLenient . B8.pack
-
-instance Show Challenge where
-  show = show . Base64.encode . rawChallenge
-
-instance ToJSON Challenge where
-  toJSON = toJSON . decodeUtf8 . Base64.encode . rawChallenge
-
-instance FromJSON Challenge where
-  parseJSON (String s) = (pure . Challenge . Base64.decodeLenient . encodeUtf8) s
-  parseJSON oth = typeMismatch "Expecting String of Base64" oth
-
+import GHC.Records
+import WebAuthn.Base
 
 -- | 5.10.1. Client Data Used in WebAuthn Signatures (dictionary CollectedClientData)
 data CollectedClientData = CollectedClientData
-  { clientType :: WebAuthnType
-  , clientChallenge :: Challenge
-  , clientOrigin :: Origin
-  , clientTokenBinding :: TokenBinding
+  { _type :: WebAuthnType
+  , challenge :: Challenge
+  , origin :: Origin
+  , tokenBinding :: TokenBinding
   }
 
 instance FromJSON CollectedClientData where
@@ -159,30 +121,30 @@ instance FromJSON WebAuthnType where
     _ -> fail "unknown WebAuthnType"
 
 data Origin = Origin
-  { originScheme :: Text
-  , originHost :: Text
-  , originPort :: Maybe Int
+  { scheme :: Text
+  , host :: Text
+  , port :: Maybe Int
   }
   deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON Origin where
-  toJSON origin = String (originScheme origin <> "://" <> originHost origin <> port (originPort origin))
+  toJSON Origin{..} = String (scheme <> "://" <> host <> mkPort port)
     where
-      port (Just int) = ":" <> T.pack (show int)
-      port Nothing = ""
+      mkPort (Just int) = ":" <> T.pack (show int)
+      mkPort Nothing = ""
 
 -- | WebAuthn Relying Party
 data RelyingParty = RelyingParty
-  { rpOrigin :: Origin
-  , rpId :: Text
+  { origin :: Origin
+  , id :: Text
   , icon :: Maybe Base64ByteString
   , name :: Text
   }
   deriving (Show, Eq, Generic)
 
 instance ToJSON RelyingParty where
-  toJSON RelyingParty{..} = object
-    $ ["id" .= toJSON rpId]
+  toJSON RelyingParty{id = id', ..} = object
+    $ ["id" .= toJSON id']
     <> maybeToPair "icon" icon
     <> [ "name" .= name]
 
@@ -191,7 +153,7 @@ maybeToPair _ Nothing = []
 maybeToPair lbl (Just bs) = [lbl .= toJSON bs]
 
 defaultRelyingParty :: Origin -> Text -> RelyingParty
-defaultRelyingParty orig = RelyingParty orig (originHost orig) Nothing
+defaultRelyingParty orig@Origin{host} = RelyingParty orig host Nothing
 
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
@@ -211,37 +173,6 @@ data AuthenticatorData = AuthenticatorData
   , authenticatorDataExtension :: ByteString
   }
 
--- | A probabilistically-unique byte sequence identifying a public key credential source and its authentication assertions.
-newtype CredentialId = CredentialId { unCredentialId :: ByteString }
-  deriving (Show, Eq, Generic, H.Hashable, CBOR.Serialise)
-
-instance FromJSON CredentialId where
-  parseJSON = fmap (CredentialId . Base64.decodeLenient . T.encodeUtf8) . parseJSON
-
-instance ToJSON CredentialId where
-  toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialId
-
--- | credential public key encoded in COSE_Key format
-newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: ByteString }
-  deriving (Show, Eq, H.Hashable, CBOR.Serialise)
-
-instance FromJSON CredentialPublicKey where
-  parseJSON v = parseJSON v
-    >>= either (const $ fail "failed to decode a public key") (pure . CredentialPublicKey)
-    . Base64.decode . T.encodeUtf8
-
-instance ToJSON CredentialPublicKey where
-  toJSON = toJSON . T.decodeUtf8 . Base64.encode  . unCredentialPublicKey
-
--- | AAGUID of the authenticator
-newtype AAGUID = AAGUID { unAAGUID :: ByteString } deriving (Show, Eq)
-
-instance FromJSON AAGUID where
-  parseJSON v = AAGUID . Base16.decodeLenient . T.encodeUtf8 <$> parseJSON v
-
-instance ToJSON AAGUID where
-  toJSON = toJSON . T.decodeUtf8 . Base16.encode . unAAGUID
-
 -- | 6.4.1. Attested Credential Data
 data AttestedCredentialData = AttestedCredentialData
   { aaguid :: AAGUID
@@ -254,9 +185,9 @@ instance J.ToJSON AttestedCredentialData
 
 -- | 5.4.3. User Account Parameters for Credential Generation
 data User = User
-  { userId :: Base64ByteString
-  , userName :: Text
-  , userDisplayName :: Text
+  { id :: Base64ByteString
+  , name :: Text
+  , displayName :: Text
   } deriving (Generic, Show, Eq)
   deriving (FromJSON, ToJSON) via PrefixedSnake "user" User
 
@@ -307,7 +238,7 @@ instance  FromJSON AndroidSafetyNet
 data StmtSafetyNet = StmtSafetyNet
   { header :: Base64ByteString
   , payload :: Base64ByteString
-  , signature :: ByteString
+  , signature_ :: ByteString
   , certificates :: X509.CertificateChain
   } deriving Show
 
@@ -334,11 +265,11 @@ instance ToJSON AuthenticatorTransport where
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
-  { pkcdType :: PublicKeyCredentialType
-  , pkcdId :: Base64ByteString
-  , pkcdTransports :: Maybe (NonEmpty AuthenticatorTransport)
+  { _type :: PublicKeyCredentialType
+  , id :: Base64ByteString
+  , transports :: Maybe (NonEmpty AuthenticatorTransport)
   } deriving (Eq, Show, Generic)
-  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "pkcd", CamelToSnake), OmitNothingFields] PublicKeyCredentialDescriptor
+  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "_", CamelToSnake), OmitNothingFields] PublicKeyCredentialDescriptor
 
 data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, Generic)
 
@@ -426,40 +357,40 @@ instance ToJSON AuthenticatorSelection where
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
 data CredentialCreationOptions = CredentialCreationOptions
-  { ccoRelyingParty :: RelyingParty
-  , ccoChallenge :: Challenge
-  , ccoUser :: User
-  , ccoCredParams :: NonEmpty PubKeyCredAlg
-  , ccoTimeout :: Maybe Integer
-  , ccoAttestation :: Maybe Attestation
-  , ccoExtensions :: Maybe Extensions
-  , ccoAuthenticatorSelection :: Maybe AuthenticatorSelection
-  , ccoExcludeCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
-  , ccoTokenBindingID :: Maybe Text
+  { relyingParty :: RelyingParty
+  , challenge :: Challenge
+  , user :: User
+  , credParams :: NonEmpty PubKeyCredAlg
+  , timeout :: Maybe Integer
+  , attestation :: Maybe Attestation
+  , extensions :: Maybe Extensions
+  , authenticatorSelection :: Maybe AuthenticatorSelection
+  , excludeCredentials :: [PublicKeyCredentialDescriptor]
+  , tokenBindingID :: Maybe Text
   } deriving (Eq, Show, Generic)
-  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "cco", CamelToSnake), OmitNothingFields] CredentialCreationOptions
+  deriving ToJSON via CustomJSON '[FieldLabelModifier CamelToSnake, OmitNothingFields] CredentialCreationOptions
 
 defaultCredentialCreationOptions
   :: RelyingParty
   -> Challenge
   -> User
   -> CredentialCreationOptions
-defaultCredentialCreationOptions ccoRelyingParty ccoChallenge ccoUser = CredentialCreationOptions
-  { ccoTimeout = Nothing
-  , ccoCredParams = ES256 NE.:| []
-  , ccoAttestation = Nothing
-  , ccoExtensions = Nothing
-  , ccoAuthenticatorSelection = Nothing
-  , ccoExcludeCredentials = Nothing
-  , ccoTokenBindingID = Nothing
+defaultCredentialCreationOptions relyingParty challenge user = CredentialCreationOptions
+  { timeout = Nothing
+  , credParams = ES256 NE.:| []
+  , attestation = Nothing
+  , extensions = Nothing
+  , authenticatorSelection = Nothing
+  , excludeCredentials = []
+  , tokenBindingID = Nothing
   , ..
   }
 
-ccoRequireUserVerification :: CredentialCreationOptions -> Bool
-ccoRequireUserVerification opts = fromMaybe False $ do
-  ant <- ccoAuthenticatorSelection opts
-  uv <- requireUserVerification ant
-  pure $ case uv of
-    Discouraged -> False
-    _ -> True
+instance HasField "requireUserVerification" CredentialCreationOptions Bool where
+  getField CredentialCreationOptions{..} = fromMaybe False $ do
+    AuthenticatorSelection{..} <- authenticatorSelection
+    uv <- requireUserVerification
+    pure $ case uv of
+      Discouraged -> False
+      _ -> True
 

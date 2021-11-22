@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 module WebAuthn.Packed where
 
@@ -44,11 +45,11 @@ verify :: Stmt
   -> BS.ByteString
   -> Digest SHA256
   -> Either VerificationFailure ()
-verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
+verify (Stmt algo sig cert) mAdPubKey AuthenticatorData{..} adRaw clientDataHash = do
   let dat = adRaw <> BA.convert clientDataHash
   case cert of
     Just x509 -> do
-        let x509Cert = X509.getCertificate x509 
+        let x509Cert = X509.getCertificate x509
             pub = X509.certPubKey x509Cert
         verifyX509Sig (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig "Packed"
         certMeetsCriteria x509Cert
@@ -62,10 +63,10 @@ verify (Stmt algo sig cert) mAdPubKey ad adRaw clientDataHash = do
             let (X509.Extensions mX509Exts) = X509.certExtensions c
                 mX509Ext = mX509Exts >>= findProperExtension [1,3,6,1,4,1,45724,1,1,4]
                 dnElements = X509.getDistinguishedElements $ X509.certSubjectDN c
-            adAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID provided in attested credential data") (return . unAAGUID . aaguid) $ attestedCredentialData ad
+            adAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID provided in attested credential data") (return . unAAGUID . (.aaguid)) attestedCredentialData
             certAAGUID <- maybe (Left $ MalformedX509Certificate "No AAGUID present in x509 extensions") (decodeAAGUID . X509.extRawContent) mX509Ext
             unless (certAAGUID == adAAGUID) . Left . MalformedX509Certificate $ "AAGUID in attested credential data doesn't match the one in x509 extensions"
-            unless ( 
+            unless (
                 (hasDnElement X509.DnCountry dnElements)
                 &&
                 (hasDnElement X509.DnOrganization dnElements)

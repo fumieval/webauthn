@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -21,7 +22,7 @@ import WebAuthn.Types
       PublicKeyCredentialDescriptor(PublicKeyCredentialDescriptor),
       AuthenticatorTransport(BLE),
       User(User),
-      AttestedCredentialData(credentialPublicKey),
+      AttestedCredentialData(..),
       RelyingParty,
       Origin(Origin),
       Challenge(Challenge),
@@ -125,14 +126,24 @@ genericCredentialTest name TestPublicKeyCredential{..} time = testCaseSteps name
   assertBool (show eth) (isRight eth)
   let Right cdata = eth
   step "Verification check..."
-  let eth = verify getChallenge defRp Nothing False getClientDataJSON getAuthenticatorData getSignature (credentialPublicKey cdata)
+  let eth = verify getChallenge defRp Nothing False getClientDataJSON getAuthenticatorData getSignature cdata.credentialPublicKey
   assertBool (show eth) (isRight eth)
 
 registrationTest :: TestTree
 registrationTest = testCaseSteps "Credentials Test" $ \step -> do
   step "Credential creation"
-  let pkcco = CredentialCreationOptions (defaultRelyingParty (Origin "https" "webauthn.biz" Nothing) "webauthn") (Challenge "12343434") (User (Base64ByteString "id") "name" "display name")
-        (ES256 :| []) Nothing Nothing Nothing Nothing (Just (PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))  :| [])) Nothing
+  let pkcco = CredentialCreationOptions
+        { relyingParty = defaultRelyingParty (Origin "https" "webauthn.biz" Nothing) "webauthn"
+        , challenge = Challenge "12343434"
+        , user = User (Base64ByteString "id") "name" "display name"
+        , credParams = ES256 :| []
+        , timeout = Nothing
+        , attestation = Nothing
+        , authenticatorSelection = Nothing
+        , extensions = Nothing
+        , excludeCredentials = [PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))]
+        , tokenBindingID = Nothing
+        }
   let ref = [aesonQQ| {
     "rp":{"id":"webauthn.biz", "name": "webauthn"},
     "challenge":"MTIzNDM0MzQ=",
@@ -170,6 +181,3 @@ androidGetAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQ
 
 androidGetSignature :: ByteString
 androidGetSignature = BS.decodeLenient "MEQCIFM6aZjT8CefzdAn-QNaa5OcPU24V1SERVocZlus1YT1AiAH_UqNj7xVOW1sDLKkpicTxIONpwfWrWNbo8KL4z5wcA"
-
-errorOnLeft (Left e) = error e
-errorOnLeft (Right r) = r
