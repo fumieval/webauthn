@@ -37,6 +37,7 @@ module WebAuthn (
   , registerCredential
   , CredentialCreationOptions(..)
   , defaultCredentialCreationOptions
+  , VerifyArgs(..)
   , verify
   , encodeAttestation
   ) where
@@ -202,23 +203,27 @@ registerCredential certStore opts@CredentialCreationOptions{..} clientDataJSON a
         -- non present public key will fail anyway or the fmt == 'none'
         Nothing -> return Nothing
 
+data VerifyArgs = VerifyArgs
+  { challenge :: Challenge
+  , relyingParty :: RelyingParty
+  , tokenBindingID :: Maybe Text
+  , requireVerification :: Bool
+  , clientDataJSON :: ByteString
+  , authenticatorData :: ByteString
+  , signature :: ByteString
+  , credentialPublicKey :: CredentialPublicKey
+  }
+
 -- | 7.2. Verifying an Authentication Assertion
-verify :: Challenge
-  -> RelyingParty
-  -> Maybe Text -- ^ Token Binding ID in base64
-  -> Bool -- ^ require user verification?
-  -> ByteString -- ^ clientDataJSON
-  -> ByteString -- ^ authenticatorData
-  -> ByteString -- ^ signature
-  -> CredentialPublicKey -- ^ public key
+verify :: VerifyArgs
   -> Either VerificationFailure ()
-verify challenge rp tbi verificationRequired clientDataJSON adRaw sig pub = do
-  clientDataCheck Get challenge clientDataJSON rp tbi
+verify VerifyArgs{..} = do
+  clientDataCheck Get challenge clientDataJSON relyingParty tokenBindingID
   let clientDataHash = hash clientDataJSON :: Digest SHA256
-  _ <- verifyAuthenticatorData rp adRaw verificationRequired
-  let dat = adRaw <> BA.convert clientDataHash
-  pub' <- parsePublicKey pub
-  verifySig pub' sig dat
+  _ <- verifyAuthenticatorData relyingParty authenticatorData requireVerification
+  let dat = authenticatorData <> BA.convert clientDataHash
+  pub' <- parsePublicKey credentialPublicKey
+  verifySig pub' signature dat
 
 clientDataCheck :: WebAuthnType -> Challenge -> ByteString -> RelyingParty -> Maybe Text -> Either VerificationFailure ()
 clientDataCheck ctype challenge clientDataJSON rp tbi = do

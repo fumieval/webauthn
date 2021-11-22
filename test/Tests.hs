@@ -4,7 +4,9 @@
 {-# LANGUAGE RecordWildCards #-}
 import WebAuthn
     ( registerCredential,
-      verify )
+      VerifyArgs(..),
+      verify,
+    )
 import Test.Tasty ( defaultMain, testGroup, TestTree )
 import Test.Tasty.HUnit (assertEqual,  assertBool, testCaseSteps )
 import Data.String.Interpolate ()
@@ -126,7 +128,16 @@ genericCredentialTest name TestPublicKeyCredential{..} time = testCaseSteps name
   assertBool (show eth) (isRight eth)
   let Right cdata = eth
   step "Verification check..."
-  let eth = verify getChallenge defRp Nothing False getClientDataJSON getAuthenticatorData getSignature cdata.credentialPublicKey
+  let eth = verify VerifyArgs
+        { challenge = getChallenge
+        , relyingParty = defRp
+        , tokenBindingID = Nothing
+        , requireVerification = False
+        , clientDataJSON = getClientDataJSON
+        , authenticatorData = getAuthenticatorData
+        , signature = getSignature
+        , credentialPublicKey = cdata.credentialPublicKey
+        }
   assertBool (show eth) (isRight eth)
 
 registrationTest :: TestTree
