@@ -2,8 +2,9 @@ origin: "https://localhost:8080"
 endpoint: "webauthn"
 handler:
   fumieval:
-  - aaguid: "00000000000000000000000000000000"
-    credentialId: vcr_XnaBZx6AH3nuDSsmRFS2ZgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
-    credentialPublicKey: pQECAyYgASFYIJFR_dt_GWkw5Ldvu2FW9rIjULYzOWpYG_IAmOuqxRbHIlggd8EFrDs8DOrouUYtzqRWPO5Mo84cJf1dWkbhaUmECaM=
+  - aaguid: '6028b017b1d44c02b4b3afcdafc96bb2'
+    credentialId: qvckt-DKXr-GUBbO59dMSKG-yvoa2Yc_61FCSeOBcac=
+    credentialPublicKey: pAEDAzkBACBZAQDlqjCMWJds42iAaL725dkbk6Tre3Ut70aSvRbf_R4-zw1VkDGdZv-Es2ZmPOlhflFXenmiGVzPGmrS1PyX6391pBDG0x_pTWcUQmdrJhPavBKx4YV7y5X3eeBsa5EnNhRrDUAqpim4QPy6RKsRU-b71TzYjL3Lhz5bou4mt2NFLZGPNA9yVYS2nETM_yMKqLvWNXrKJksofYRUAVyobEvJjmimcjYNgyNhdebi14p9bU355s8FiZFzjrwMZeeRlURBTTmN8uXJUmGIlq0oH0jY0zG5uQvZQc6CDvYLAmN1EVhU3tmysdqqRxjrVxBd8LM67vnwIDN5cmdtrD_UXUB1IUMBAAE=
 
 timeout: 86400
+certStore: "demo/cacert.pem"

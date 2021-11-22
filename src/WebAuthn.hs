@@ -169,7 +169,7 @@ registerCredential certStore opts@CredentialCreationOptions{..} clientDataJSON a
     _ -> throwE (UnsupportedAttestationFormat (pack $ show (attStmt attestationObject)))
 
   case attestedCredentialData of
-    Nothing -> throwE MalformedAuthenticatorData
+    Nothing -> throwE $ MalformedAuthenticatorData "missing attestedCredentialData"
     Just c -> pure c
   where
     clientDataHash = hash clientDataJSON :: Digest SHA256
@@ -188,7 +188,8 @@ registerCredential certStore opts@CredentialCreationOptions{..} clientDataJSON a
             | t == t' -> pure ()
             | otherwise -> Left MismatchedTokenBinding
     extractAuthData attestationObject = do
-      ad <- either (const $ Left MalformedAuthenticatorData) pure $ C.runGet parseAuthenticatorData (authData attestationObject)
+      ad <- either (Left . MalformedAuthenticatorData . pack) pure
+        $ C.runGet parseAuthenticatorData (authData attestationObject)
       hash (encodeUtf8 relyingParty.id) == ad.rpIdHash ?? MismatchedRPID
       ad.userPresent ?? UserNotPresent
       not opts.requireUserVerification || ad.userVerified ?? UserUnverified
@@ -198,7 +199,8 @@ registerCredential certStore opts@CredentialCreationOptions{..} clientDataJSON a
       case ad.attestedCredentialData of
         Just k -> do
           parsedPubKey <- either throwE return $ parsePublicKey k.credentialPublicKey
-          unless (any (hasMatchingAlg parsedPubKey) credParams) $ throwE MalformedAuthenticatorData
+          unless (any (hasMatchingAlg parsedPubKey) credParams) $ throwE $ MalformedAuthenticatorData
+            $ "does not match " <> pack (show credParams)
           return $ Just parsedPubKey
         -- non present public key will fail anyway or the fmt == 'none'
         Nothing -> return Nothing
@@ -243,7 +245,7 @@ verifyClientTokenBinding _ _ = pure ()
 
 verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
 verifyAuthenticatorData rp adRaw verificationRequired = do
-  ad@AuthenticatorData{..} <- first (const MalformedAuthenticatorData) (C.runGet parseAuthenticatorData adRaw)
+  ad@AuthenticatorData{..} <- first (MalformedAuthenticatorData . pack) (C.runGet parseAuthenticatorData adRaw)
   hash (encodeUtf8 rp.id) == rpIdHash ?? MismatchedRPID
   userPresent ?? UserNotPresent
   not verificationRequired || userVerified ?? UserUnverified

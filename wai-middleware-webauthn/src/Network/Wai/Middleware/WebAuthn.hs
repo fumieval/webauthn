@@ -64,7 +64,7 @@ data Config a = Config
   , endpoint :: !Text
   , origin :: !Origin
   , timeout :: !Double
-  , certStore :: !Text
+  , certStore :: !FilePath
   } deriving (Functor, Generic)
 instance J.FromJSON a => J.FromJSON (Config a)
 
@@ -98,8 +98,9 @@ mkMiddleware :: Config Handler -> IO Middleware
 mkMiddleware Config{..} = do
   vTokens <- newIORef HM.empty
   libJSPath <- getDataFileName "lib.js"
-  cspath <- getDataFileName "cacert.pem"
-  Just cs <- X509.readCertificateStore cspath
+  cs <- X509.readCertificateStore certStore >>= \case
+    Nothing -> fail $ "Failed to obtain certification store from " <> certStore
+    Just a -> pure a
   let theRelyingParty = W.defaultRelyingParty origin "Display Name"
 
   _ <- forkIO $ forever $ do
@@ -122,6 +123,7 @@ mkMiddleware Config{..} = do
             (defaultCredentialCreationOptions theRelyingParty challenge user)
             cdj
             att
+            Nothing
         case rg of
           Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
           Right cd -> do
@@ -131,7 +133,16 @@ mkMiddleware Config{..} = do
         body <- lazyRequestBody req
         let (cid, cdj, ad, sig, challenge) = CBOR.deserialise body
         findPublicKey handler cid >>= \case
-          Just (name, pub) -> case verify challenge theRelyingParty Nothing False cdj ad sig pub of
+          Just (name, pub) -> case verify VerifyArgs
+            { challenge = challenge
+            , relyingParty = theRelyingParty
+            , tokenBindingID = Nothing
+            , requireVerification = False
+            , clientDataJSON = cdj
+            , authenticatorData = ad
+            , signature = sig
+            , credentialPublicKey = pub
+            } of
             Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
             Right _ -> do
               tokenRaw <- getRandomBytes 16

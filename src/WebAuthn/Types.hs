@@ -217,7 +217,7 @@ data VerificationFailure
   | UnsupportedAttestationFormat Text
   | UnsupportedAlgorithm Int
   | MalformedPublicKey
-  | MalformedAuthenticatorData
+  | MalformedAuthenticatorData Text
   | MalformedX509Certificate Text
   | MalformedSignature
   | SignatureFailure String
@@ -377,7 +377,7 @@ defaultCredentialCreationOptions
   -> CredentialCreationOptions
 defaultCredentialCreationOptions relyingParty challenge user = CredentialCreationOptions
   { timeout = Nothing
-  , credParams = ES256 NE.:| []
+  , credParams = NE.fromList [ES256, RS256]
   , attestation = Nothing
   , extensions = Nothing
   , authenticatorSelection = Nothing

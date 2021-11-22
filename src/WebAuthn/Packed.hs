@@ -9,6 +9,7 @@ import Data.ASN1.Encoding (decodeASN1)
 import Data.Maybe (isJust)
 import qualified Data.ASN1.OID as OID (OID, getObjectID)
 import Data.List (find)
+import Data.String
 import Control.Monad (unless)
 import Crypto.Hash
 import qualified Data.ByteString as BS
@@ -54,8 +55,8 @@ verify (Stmt algo sig cert) mAdPubKey AuthenticatorData{..} adRaw clientDataHash
         verifyX509Sig (X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_EC) pub dat sig "Packed"
         certMeetsCriteria x509Cert
     Nothing -> do
-      adPubKey <- maybe (Left MalformedAuthenticatorData) return mAdPubKey
-      unless (hasMatchingAlg adPubKey algo) $ Left MalformedAuthenticatorData
+      adPubKey <- maybe (Left $ MalformedAuthenticatorData "Packed public key") return mAdPubKey
+      unless (hasMatchingAlg adPubKey algo) $ Left $ MalformedAuthenticatorData $ "Packed:" <> fromString (show algo)
       verifySig adPubKey sig dat
     where
         certMeetsCriteria :: X509.Certificate -> Either VerificationFailure ()
