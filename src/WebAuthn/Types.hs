@@ -13,6 +13,8 @@
 module WebAuthn.Types (
   -- * Relying party
   Origin(..)
+  , displayOrigin
+  , parseOrigin
   , TokenBinding(..)
   -- Challenge
   , Challenge(..)
@@ -128,20 +130,26 @@ data Origin = Origin
   }
   deriving (Show, Eq, Ord, Generic)
 
+displayOrigin :: Origin -> Text
+displayOrigin Origin{..} = scheme <> "://" <> host <> mkPort port
+  where
+    mkPort (Just int) = ":" <> T.pack (show int)
+    mkPort Nothing = ""
+
+parseOrigin :: MonadFail m => Text -> m Origin
+parseOrigin str = case T.break (==':') str of
+  (sch, url) -> case T.break (==':') $ T.drop 3 url of
+    (host, portStr)
+      | T.null portStr -> pure $ Origin sch host Nothing
+      | otherwise -> case T.decimal $ T.drop 1 portStr of
+        Left e -> fail e
+        Right (port, _) -> pure $ Origin sch host $ Just port
+
 instance ToJSON Origin where
-  toJSON Origin{..} = String (scheme <> "://" <> host <> mkPort port)
-    where
-      mkPort (Just int) = ":" <> T.pack (show int)
-      mkPort Nothing = ""
+  toJSON = String . displayOrigin
 
 instance FromJSON Origin where
-  parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
-    (sch, url) -> case T.break (==':') $ T.drop 3 url of
-      (host, portStr)
-        | T.null portStr -> pure $ Origin sch host Nothing
-        | otherwise -> case T.decimal $ T.drop 1 portStr of
-          Left e -> fail e
-          Right (port, _) -> pure $ Origin sch host $ Just port
+  parseJSON = withText "Origin" parseOrigin
 
 -- | 6.1. Authenticator Data
 data AuthenticatorData = AuthenticatorData
