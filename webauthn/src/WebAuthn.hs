@@ -70,12 +70,12 @@ import Data.Text.Encoding (encodeUtf8)
 import Data.X509.CertificateStore qualified as X509
 import GHC.Records
 import Prelude hiding (fail)
-import WebAuthn.AndroidSafetyNet qualified as Android
 import WebAuthn.Base
-import WebAuthn.FIDOU2F qualified as U2F
-import WebAuthn.Packed qualified as Packed
 import WebAuthn.Signature
-import WebAuthn.TPM qualified as TPM
+import WebAuthn.Statement.AndroidSafetyNet qualified as Android
+import WebAuthn.Statement.FIDOU2F qualified as U2F
+import WebAuthn.Statement.Packed qualified as Packed
+import WebAuthn.Statement.TPM qualified as TPM
 import WebAuthn.Types
 
 -- | Generate a cryptographic challenge (13.1).

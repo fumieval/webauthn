@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-module WebAuthn.Packed where
+module WebAuthn.Statement.Packed where
 
 import Data.ByteString.Lazy (fromStrict)
 import Data.ASN1.BinaryEncoding (DER(..))

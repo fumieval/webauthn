@@ -27,12 +27,12 @@ library
   hs-source-dirs:     src
   exposed-modules:
     WebAuthn
-    WebAuthn.AndroidSafetyNet
     WebAuthn.Base
-    WebAuthn.FIDOU2F
-    WebAuthn.Packed
+    WebAuthn.Statement.AndroidSafetyNet
+    WebAuthn.Statement.FIDOU2F
+    WebAuthn.Statement.Packed
+    WebAuthn.Statement.TPM
     WebAuthn.Signature
-    WebAuthn.TPM
     WebAuthn.Types
 
   build-depends:

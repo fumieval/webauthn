@@ -1,7 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-module WebAuthn.AndroidSafetyNet (
+module WebAuthn.Statement.AndroidSafetyNet (
   decode,
   verify
 ) where
