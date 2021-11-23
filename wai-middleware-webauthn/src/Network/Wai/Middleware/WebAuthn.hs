@@ -111,7 +111,7 @@ mkMiddleware Config{..} = do
 
   return $ \app req sendResp -> case pathInfo req of
     x : xs | x == endpoint -> case xs of
-      ["lib.js"] -> sendResp $ responseFile status200 headers libJSPath Nothing -- TODO data-files
+      ["lib.js"] -> sendResp $ responseFile status200 headers libJSPath Nothing
       ["challenge"] -> do
         challenge <- generateChallenge 16
         sendResp $ responseJSON challenge

@@ -30,6 +30,7 @@ executable demo
     , bytestring
     , http-types
     , wai
+    , webauthn
     , wai-middleware-webauthn
     , warp
     , warp-tls
