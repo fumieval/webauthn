@@ -44,12 +44,9 @@ module WebAuthn (
   , defaultCredentialCreationOptions
   , VerifyArgs(..)
   , verify
-  , encodeAttestation
   ) where
 
-import Codec.CBOR.Decoding qualified as CBOR
 import Codec.CBOR.Encoding qualified as CBOR
-import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Term qualified as CBOR
 import Codec.Serialise qualified as CBOR
 import Control.Monad (unless)
@@ -121,35 +118,34 @@ data AttestationStatement = AF_Packed Packed.Stmt
   | AF_None
   deriving Show
 
-decodeAttestation :: CBOR.Decoder s AttestationObject
-decodeAttestation = do
-  m :: Map.Map Text CBOR.Term <- CBOR.decode
-  CBOR.TString fmt <- maybe (fail "fmt") pure $ Map.lookup "fmt" m
-  stmtTerm <- maybe (fail "stmt") pure $ Map.lookup "attStmt" m
-  stmt <- case fmt of
-    "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ U2F.decode stmtTerm
-    "packed" -> AF_Packed <$> Packed.decode stmtTerm
-    "tpm" -> AF_TPM <$> TPM.decode stmtTerm
-    "android-safetynet" -> AF_AndroidSafetyNet <$> Android.decode stmtTerm
-    "none" -> pure AF_None
-    _ -> fail $ "decodeAttestation: Unsupported format: " ++ show fmt
-  CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
-  return (AttestationObject fmt stmt adRaw)
+instance CBOR.Serialise AttestationObject where
+  decode = do
+    m :: Map.Map Text CBOR.Term <- CBOR.decode
+    CBOR.TString fmt <- maybe (fail "fmt") pure $ Map.lookup "fmt" m
+    stmtTerm <- maybe (fail "stmt") pure $ Map.lookup "attStmt" m
+    stmt <- case fmt of
+      "fido-u2f" -> maybe (fail "fido-u2f") (pure . AF_FIDO_U2F) $ U2F.decode stmtTerm
+      "packed" -> AF_Packed <$> Packed.decode stmtTerm
+      "tpm" -> AF_TPM <$> TPM.decode stmtTerm
+      "android-safetynet" -> AF_AndroidSafetyNet <$> Android.decode stmtTerm
+      "none" -> pure AF_None
+      _ -> fail $ "AttestationObject.decode: Unsupported format: " ++ show fmt
+    CBOR.TBytes adRaw <- maybe (fail "authData") pure $ Map.lookup "authData" m
+    return (AttestationObject fmt stmt adRaw)
 
-encodeAttestation :: AttestationObject -> CBOR.Encoding
-encodeAttestation AttestationObject{..} = CBOR.encodeMapLen 3
-  <> CBOR.encodeString "fmt"
-  <> encodeAttestationFmt
-  <> CBOR.encodeString  "attStmt"
-  where
-    encodeAttestationFmt :: CBOR.Encoding
-    encodeAttestationFmt = case attStmt of
-      AF_FIDO_U2F _ -> CBOR.encodeString "fido-u2f"
-      AF_Packed _ -> CBOR.encodeString "packed"
-      AF_TPM _ -> CBOR.encodeString "tpm"
-      AF_AndroidKey -> CBOR.encodeString "android-key"
-      AF_AndroidSafetyNet _ -> CBOR.encodeString "android-safetynet"
-      AF_None -> CBOR.encodeString "none"
+  encode AttestationObject{..} = CBOR.encodeMapLen 3
+    <> CBOR.encodeString "fmt"
+    <> encodeAttestationFmt
+    <> CBOR.encodeString  "attStmt"
+    where
+      encodeAttestationFmt :: CBOR.Encoding
+      encodeAttestationFmt = case attStmt of
+        AF_FIDO_U2F _ -> CBOR.encodeString "fido-u2f"
+        AF_Packed _ -> CBOR.encodeString "packed"
+        AF_TPM _ -> CBOR.encodeString "tpm"
+        AF_AndroidKey -> CBOR.encodeString "android-key"
+        AF_AndroidSafetyNet _ -> CBOR.encodeString "android-safetynet"
+        AF_None -> CBOR.encodeString "none"
 
 data RegisterCredentialArgs t = RegisterCredentialArgs
   { certificateStore :: X509.CertificateStore
@@ -180,8 +176,8 @@ registerCredential :: forall m. MonadIO m
 registerCredential RegisterCredentialArgs{attestationObject = rawAttObj, ..} = runExceptT $ do
   _ <- hoistEither runAttestationCheck
   attestationObject@AttestationObject{..} <- hoistEither
-    $ either (Left . CBORDecodeError "registerCredential") (pure . snd)
-    $ CBOR.deserialiseFromBytes decodeAttestation
+    $ first (CBORDecodeError "registerCredential")
+    $ CBOR.deserialiseOrFail
     $ BL.fromStrict rawAttObj
   ad@AuthenticatorData{..} <- hoistEither $ extractAuthData attestationObject
   mAdPubKey <- verifyPubKey ad
