@@ -72,10 +72,10 @@ import GHC.Records
 import Prelude hiding (fail)
 import WebAuthn.Base
 import WebAuthn.Signature
-import WebAuthn.Statement.AndroidSafetyNet qualified as Android
-import WebAuthn.Statement.FIDOU2F qualified as U2F
-import WebAuthn.Statement.Packed qualified as Packed
-import WebAuthn.Statement.TPM qualified as TPM
+import WebAuthn.Attestation.Statement.AndroidSafetyNet qualified as Android
+import WebAuthn.Attestation.Statement.FIDOU2F qualified as U2F
+import WebAuthn.Attestation.Statement.Packed qualified as Packed
+import WebAuthn.Attestation.Statement.TPM qualified as TPM
 import WebAuthn.Types
 
 -- | Generate a cryptographic challenge (13.1).

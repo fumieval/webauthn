@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module WebAuthn.Statement.TPM where
+module WebAuthn.Attestation.Statement.TPM where
 
 import Data.ByteString (ByteString)
 import Crypto.Hash (Digest, SHA256)

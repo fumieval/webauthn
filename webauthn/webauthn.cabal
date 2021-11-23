@@ -28,10 +28,10 @@ library
   exposed-modules:
     WebAuthn
     WebAuthn.Base
-    WebAuthn.Statement.AndroidSafetyNet
-    WebAuthn.Statement.FIDOU2F
-    WebAuthn.Statement.Packed
-    WebAuthn.Statement.TPM
+    WebAuthn.Attestation.Statement.AndroidSafetyNet
+    WebAuthn.Attestation.Statement.FIDOU2F
+    WebAuthn.Attestation.Statement.Packed
+    WebAuthn.Attestation.Statement.TPM
     WebAuthn.Signature
     WebAuthn.Types
 

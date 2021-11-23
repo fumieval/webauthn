@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-module WebAuthn.Statement.FIDOU2F where
+module WebAuthn.Attestation.Statement.FIDOU2F where
 
 import Crypto.Hash
 import Data.ByteString (ByteString)
