@@ -1,4 +1,6 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -50,7 +52,7 @@ type StaticKeys = HM.HashMap Identifier [AttestedCredentialData]
 staticKeys :: StaticKeys -> Handler
 staticKeys authorisedKeys = Handler
   { findCredentials = \ident -> pure
-    $ maybe [] id
+    $ maybe [] Prelude.id
     $ HM.lookup ident authorisedKeys
   , findPublicKey = \cid -> pure $ HM.lookup cid authorisedMap
   , registerKey = \_ _ -> pure ()
@@ -64,7 +66,7 @@ data Config a = Config
   , endpoint :: !Text
   , origin :: !Origin
   , timeout :: !Double
-  , certStore :: !Text
+  , certStore :: !FilePath
   } deriving (Functor, Generic)
 instance J.FromJSON a => J.FromJSON (Config a)
 
@@ -98,9 +100,9 @@ mkMiddleware :: Config Handler -> IO Middleware
 mkMiddleware Config{..} = do
   vTokens <- newIORef HM.empty
   libJSPath <- getDataFileName "lib.js"
-  cspath <- (getDataFileName "cacert.pem")
-  Just cs <- X509.readCertificateStore cspath
-  let theRelyingParty = W.defaultRelyingParty origin
+  certificateStore <- X509.readCertificateStore certStore >>= \case
+    Nothing -> fail $ "Failed to obtain certification store from " <> certStore
+    Just a -> pure a
 
   _ <- forkIO $ forever $ do
       now <- getMonotonicTime
@@ -109,7 +111,7 @@ mkMiddleware Config{..} = do
 
   return $ \app req sendResp -> case pathInfo req of
     x : xs | x == endpoint -> case xs of
-      ["lib.js"] -> sendResp $ responseFile status200 headers libJSPath Nothing -- TODO data-files
+      ["lib.js"] -> sendResp $ responseFile status200 headers libJSPath Nothing
       ["challenge"] -> do
         challenge <- generateChallenge 16
         sendResp $ responseJSON challenge
@@ -117,11 +119,20 @@ mkMiddleware Config{..} = do
         >>= sendResp . responseJSON
       ["register"] -> do
         body <- lazyRequestBody req
-        let (user, cdj, att, challenge) = CBOR.deserialise body
-        rg <- W.registerCredential cs
-            (defaultCredentialCreationOptions theRelyingParty challenge user)
-            cdj
-            att
+        let (user, clientDataJSON, attestationObject, challenge) = CBOR.deserialise body
+
+        rg <- W.registerCredential
+          defaultRegisterCredentialArgs
+            { certificateStore
+            , options = defaultCredentialCreationOptions
+              { rp = originToRelyingParty origin
+              , challenge
+              , user
+              }
+            , clientDataJSON
+            , attestationObject
+            }
+
         case rg of
           Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
           Right cd -> do
@@ -131,7 +142,16 @@ mkMiddleware Config{..} = do
         body <- lazyRequestBody req
         let (cid, cdj, ad, sig, challenge) = CBOR.deserialise body
         findPublicKey handler cid >>= \case
-          Just (name, pub) -> case verify challenge theRelyingParty Nothing False cdj ad sig pub of
+          Just (name, pub) -> case verify VerifyArgs
+            { challenge = challenge
+            , relyingParty = originToRelyingParty origin
+            , tokenBindingID = Nothing
+            , requireVerification = False
+            , clientDataJSON = cdj
+            , authenticatorData = ad
+            , signature = sig
+            , credentialPublicKey = pub
+            } of
             Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
             Right _ -> do
               tokenRaw <- getRandomBytes 16

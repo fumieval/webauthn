@@ -1,6 +1,8 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import WebAuthn.Types (Origin(..))
 import qualified Network.Wai.Middleware.WebAuthn as WebAuthn
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.Warp.Internal
@@ -20,7 +22,9 @@ main = do
   path <- getDataFileName "index.html"
   pathCert <- getDataFileName "certificate.pem"
   pathKey <- getDataFileName "key.pem"
-  runTLS (tlsSettings pathCert pathKey) (setPort 8080 defaultSettings) { settingsHTTP2Enabled = False }
+  putStrLn $ "Listening on " <> show config.origin
+  let cfg = maybe id setPort config.origin.port defaultSettings
+  runTLS (tlsSettings pathCert pathKey) cfg { settingsHTTP2Enabled = False }
     $ mid $ \req sendResp -> case pathInfo req of
       [] -> sendResp $ responseFile status200 [] path Nothing
       ["api"] -> case WebAuthn.requestIdentifier req of

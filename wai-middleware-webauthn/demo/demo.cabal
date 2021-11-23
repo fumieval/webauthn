@@ -17,7 +17,7 @@ maintainer:    fumiexcel@gmail.com
 -- copyright:
 -- category:
 -- extra-source-files:  CHANGELOG.md
-data-files:    index.html
+data-files:    index.html, cacert.pem, lib.js
 
 executable demo
   main-is:          Main.hs
@@ -30,6 +30,7 @@ executable demo
     , bytestring
     , http-types
     , wai
+    , webauthn
     , wai-middleware-webauthn
     , warp
     , warp-tls

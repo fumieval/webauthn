@@ -4,6 +4,17 @@ wai-middleware-webauthn
 This is a WAI middleware which introduces a simple authentication mechanism
 based on [Web Authentication API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API) (WebAuthn).
 
+Demo
+----
+
+```
+cabal run demo
+```
+
+Starts a demo application. Open https://localhost:8080/ and click the Register button once you filled the display name.
+If successful, it prints the credential in the top section. Copy the credential to `config.yaml` and restart the server.
+If the credential is stored in the authenticator and `config.yaml` correctly, you should be able to `Login with WebAuthn` using the key of the credential in `config.yaml`.
+
 Configuration
 ----
 

@@ -9,18 +9,17 @@ license-file:  LICENSE
 author:        Fumiaki Kinoshita, Sumit Raja <sumitraja@gmail.com>
 maintainer:    fumiexcel@gmail.com
 category:      Web
-tested-with:    GHC == 8.8.4
-              , GHC == 8.10.4
+tested-with:   GHC == 9.2.1
 
 common base-common
   build-depends:
-    , aeson             >=1.5  && <1.6
-    , base              >=4.13 && <4.15
+    , aeson             ^>=2.0
+    , base              >=4.16 && <4.17
     , base64-bytestring >=1.2  && <1.3
     , bytestring        >=0.10 && <0.12
     , errors            >=2.3  && <2.4
     , x509-store        >=1.6  && <1.7
-
+    , hourglass         ^>= 0.2
   default-language:   Haskell2010
 
 library
@@ -29,6 +28,7 @@ library
   exposed-modules:
     WebAuthn
     WebAuthn.AndroidSafetyNet
+    WebAuthn.Base
     WebAuthn.FIDOU2F
     WebAuthn.Packed
     WebAuthn.Signature
@@ -43,7 +43,7 @@ library
     , cereal            >=0.5  && <0.6
     , deriving-aeson    ^>= 0.2
     , containers        >=0.6  && <0.7
-    , cryptonite        >=0.28 && <0.29
+    , cryptonite        >=0.29 && <0.30
     , hashable          >=1.3  && <1.4
     , memory            >=0.14 && <1.16
     , serialise         >=0.2  && <0.3
@@ -52,7 +52,13 @@ library
     , x509              >=1.7  && <1.8
     , x509-validation   >=1.6  && <1.7
 
-  ghc-options:        -Wall
+  ghc-options:        -Wall -Wcompat
+  default-extensions:
+    ImportQualifiedPost
+    GeneralisedNewtypeDeriving
+    DeriveGeneric
+    RecordWildCards
+    ScopedTypeVariables
 
 test-suite test-webauthn
   import:             base-common

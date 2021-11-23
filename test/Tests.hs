@@ -1,9 +1,14 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 import WebAuthn
-    ( registerCredential,
-      verify )
+    ( RegisterCredentialArgs(..),
+      VerifyArgs(..),
+      verify,
+    )
 import Test.Tasty ( defaultMain, testGroup, TestTree )
 import Test.Tasty.HUnit (assertEqual,  assertBool, testCaseSteps )
 import Data.String.Interpolate ()
@@ -21,15 +26,16 @@ import WebAuthn.Types
       PublicKeyCredentialDescriptor(PublicKeyCredentialDescriptor),
       AuthenticatorTransport(BLE),
       User(User),
-      AttestedCredentialData(credentialPublicKey),
-      RelyingParty,
+      AttestedCredentialData(..),
       Origin(Origin),
       Challenge(Challenge),
       Base64ByteString(Base64ByteString),
-      defaultRelyingParty )
+      PublicKeyCredentialType (PublicKey),
+      PublicKeyCredentialRpEntity )
 import Data.Aeson.QQ.Simple ( aesonQQ )
 import Data.List.NonEmpty ( NonEmpty((:|)) )
 import Data.Aeson.Encoding (value)
+import Data.Hourglass (DateTime, timeConvert, Date (Date), Month (June))
 
 main :: IO ()
 main = defaultMain tests
@@ -38,25 +44,25 @@ tests :: TestTree
 tests = testGroup "Tests" [androidTests]
 
 androidTests :: TestTree
-androidTests = testGroup "WebAuthn Tests" 
+androidTests = testGroup "WebAuthn Tests"
   [
     -- See: https://github.com/fumieval/webauthn/issues/9
-    -- androidCredentialTest
-    packedSelfAttestedTest
+    androidCredentialTest
+    , packedSelfAttestedTest
     , packedNonSelfAttestedTest
     , fidoU2FAttestedTest
   ]
 
 androidCredentialTest :: TestTree
-androidCredentialTest = genericCredentialTest "Android test" androidPublicKeyCredential
+androidCredentialTest = genericCredentialTest "Android test" androidPublicKeyCredential (Just $ timeConvert (Date 2020 June 1))
 
-defRp :: RelyingParty
-defRp = defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing)
+defRp :: PublicKeyCredentialRpEntity
+defRp = "psteniusubi.github.io"
 
 decodePanic :: FromJSON a => ByteString -> a
 decodePanic s = either error Prelude.id (A.eitherDecode (BL.fromStrict s))
 
-data TestPublicKeyCredential = TestPublicKeyCredential 
+data TestPublicKeyCredential = TestPublicKeyCredential
   { clientDataJSON :: ByteString
   , attestationObject :: ByteString
   , challenge :: Challenge
@@ -66,7 +72,7 @@ data TestPublicKeyCredential = TestPublicKeyCredential
   , getSignature :: ByteString
   }
 
-androidPublicKeyCredential = TestPublicKeyCredential 
+androidPublicKeyCredential = TestPublicKeyCredential
   { clientDataJSON = androidClientDataJSON
   , attestationObject = androidAttestationObject
   , challenge = androidChallenge
@@ -76,7 +82,7 @@ androidPublicKeyCredential = TestPublicKeyCredential
   , getSignature = androidGetSignature
   }
 
-packedSelfAttestedKeyCredential = TestPublicKeyCredential 
+packedSelfAttestedKeyCredential = TestPublicKeyCredential
   { clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiSkhxcVRQWF9oQkw1bHlDZE9DQzRMNTVzcm9LbXFMX0RDemlOeWx6MXF5dyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
   , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZyZjc2lnWEYwRAIgaAVCWvaUJo0NBq_c1yr7R9jXN-G8MqqIOVhswsTX4K0CIFZul9oOTdWwDx4WAb3cgPTTjWzXSSxcjseS33OVqhgWaGF1dGhEYXRhWNUs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUVgAZ6yrc4AAjW8xgpkiwsl8fBVAwBRAft9ACeHPR6QCu6Clp5otBmdIyMGV6w1emT--vpR_JpIKPJdIkNLOjzoLqd-z_j3vKvLCB4pQAwccqPF56HKs4h8DsrEuG0mMx5jJz_9ndh1pQECAyYgASFYIFgD8QsPYGMaq49F7-JWJowfVaxeiFzJUXp2k8nvrRpUIlggyGWqdGOBLZgO61mPMEncHjTmBxFPWzqKbUlBvT1fhRg"
   , challenge = "JHqqTPX_hBL5lyCdOCC4L55sroKmqL_DCziNylz1qyw="
@@ -86,9 +92,9 @@ packedSelfAttestedKeyCredential = TestPublicKeyCredential
   , getSignature = BS.decodeLenient "MEYCIQDteZqnEublzIw5AgnOzu5sd7b387GitIHbjNSXFFoFxgIhAP4IFIiyweG__D3VOBSnvneuK794RuGoUNasXhQNe0gk"
   }
 
-packedSelfAttestedTest = genericCredentialTest "Packed self attested test" packedSelfAttestedKeyCredential
+packedSelfAttestedTest = genericCredentialTest "Packed self attested test" packedSelfAttestedKeyCredential Nothing
 
-packedNonSelfAttestedKeyCredential = TestPublicKeyCredential 
+packedNonSelfAttestedKeyCredential = TestPublicKeyCredential
   { clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiTU1jVUFkWkJ2STRENktNYldjZW44bTNNRElCRWVWQWxkalBwcjYzZWFJbyIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
   , attestationObject = BS.decodeLenient "o2NmbXRmcGFja2VkZ2F0dFN0bXSjY2FsZyZjc2lnWEcwRQIge9MVIqCg80CbXoD2m6Hu4J6EKztfia76dtOoAeDUejQCIQCQwLbwVYoiYsAcOf8iigzbixDBiUAYJpUCIoa-XXvuYmN4NWOBWQLBMIICvTCCAaWgAwIBAgIEGKxGwDANBgkqhkiG9w0BAQsFADAuMSwwKgYDVQQDEyNZdWJpY28gVTJGIFJvb3QgQ0EgU2VyaWFsIDQ1NzIwMDYzMTAgFw0xNDA4MDEwMDAwMDBaGA8yMDUwMDkwNDAwMDAwMFowbjELMAkGA1UEBhMCU0UxEjAQBgNVBAoMCVl1YmljbyBBQjEiMCAGA1UECwwZQXV0aGVudGljYXRvciBBdHRlc3RhdGlvbjEnMCUGA1UEAwweWXViaWNvIFUyRiBFRSBTZXJpYWwgNDEzOTQzNDg4MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEeeo7LHxJcBBiIwzSP-tg5SkxcdSD8QC-hZ1rD4OXAwG1Rs3Ubs_K4-PzD4Hp7WK9Jo1MHr03s7y-kqjCrutOOqNsMGowIgYJKwYBBAGCxAoCBBUxLjMuNi4xLjQuMS40MTQ4Mi4xLjcwEwYLKwYBBAGC5RwCAQEEBAMCBSAwIQYLKwYBBAGC5RwBAQQEEgQQy2lIHo_3QDmT7AonKaFUqDAMBgNVHRMBAf8EAjAAMA0GCSqGSIb3DQEBCwUAA4IBAQCXnQOX2GD4LuFdMRx5brr7Ivqn4ITZurTGG7tX8-a0wYpIN7hcPE7b5IND9Nal2bHO2orh_tSRKSFzBY5e4cvda9rAdVfGoOjTaCW6FZ5_ta2M2vgEhoz5Do8fiuoXwBa1XCp61JfIlPtx11PXm5pIS2w3bXI7mY0uHUMGvxAzta74zKXLslaLaSQibSKjWKt9h-SsXy4JGqcVefOlaQlJfXL1Tga6wcO0QTu6Xq-Uw7ZPNPnrpBrLauKDd202RlN4SP7ohL3d9bG6V5hUz_3OusNEBZUn5W3VmPj1ZnFavkMB3RkRMOa58MZAORJT4imAPzrvJ0vtv94_y71C6tZ5aGF1dGhEYXRhWMQs15PPoLQYy78OqFIihgfZ6XszPU2wpBAXdmr2u4x1UUUAAAAuy2lIHo_3QDmT7AonKaFUqABAPjPqie67O5ZBLiBEWi1uF8ueqxifIu5txG8qQ82HiribGY2F99HPJ_ZTgRbEZCVySxy0Xbd-tiUzyEwmJQsiNqUBAgMmIAEhWCAiZN75DKsRFIWYKExiHA_ZpKIJGbRlL2JYE6iw9x1OGSJYILwa9HpPBuZ4S4BfT4wigrSzs_V6m47z0A1wsetLUwl1"
   , challenge = Challenge (BS.decodeLenient "MMcUAdZBvI4D6KMbWcen8m3MDIBEeVAldjPpr63eaIo")
@@ -98,9 +104,9 @@ packedNonSelfAttestedKeyCredential = TestPublicKeyCredential
   , getSignature = BS.decodeLenient "MEUCIAUiSZx7SeFuqLS7nCtfEwgHM7zfhJQTx2AUf6qW0P0TAiEAh-UwgffnlRaz5cjYeGirABt2FTcgyiuLuv-NOpdJQf8"
   }
 
-packedNonSelfAttestedTest = genericCredentialTest "Packed non-self attested test" packedNonSelfAttestedKeyCredential
+packedNonSelfAttestedTest = genericCredentialTest "Packed non-self attested test" packedNonSelfAttestedKeyCredential Nothing
 
-fidoU2FAttestedKeyCredential = TestPublicKeyCredential 
+fidoU2FAttestedKeyCredential = TestPublicKeyCredential
   { clientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiVHF5dWZTNmJCam5obk5sT09BcWN3X2tfcW9DZVhrdy1VbkQ2X1QxTEZ6WSIsIm9yaWdpbiI6Imh0dHBzOi8vcHN0ZW5pdXN1YmkuZ2l0aHViLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ"
   , attestationObject = BS.decodeLenient "o2NmbXRoZmlkby11MmZnYXR0U3RtdKJjc2lnWEcwRQIgLalQZ_wPQbHRQJWvkSb9pMwykJTIglVyO9tQqJBdWeACIQDW9PpXo-7gcl8f8MOvcQZ2a-BV0NDtsKysznwF17hTmmN4NWOBWQHiMIIB3jCCAYCgAwIBAgIBATANBgkqhkiG9w0BAQsFADBgMQswCQYDVQQGEwJVUzERMA8GA1UECgwIQ2hyb21pdW0xIjAgBgNVBAsMGUF1dGhlbnRpY2F0b3IgQXR0ZXN0YXRpb24xGjAYBgNVBAMMEUJhdGNoIENlcnRpZmljYXRlMB4XDTE3MDcxNDAyNDAwMFoXDTQxMDExMDE1MDgwNVowYDELMAkGA1UEBhMCVVMxETAPBgNVBAoMCENocm9taXVtMSIwIAYDVQQLDBlBdXRoZW50aWNhdG9yIEF0dGVzdGF0aW9uMRowGAYDVQQDDBFCYXRjaCBDZXJ0aWZpY2F0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABI1hfmXJUI5kvMVnOsgqZ5naPBRGaCwljEY__99Y39L6Pmw3i1PXlcSk3_tBme3Xhi8jq68CA7S4kRugVpmU4QGjKDAmMBMGCysGAQQBguUcAgEBBAQDAgUgMA8GA1UdEwEB_wQFMAMBAQAwDQYJKoZIhvcNAQELBQADSQAwRgIhALzf9AI7ncZCUGONkRJg1j0giitNVEtql2-DNLkUcAKNAiEAl2FZKfyv8wP6gq8a15Zwvb0IuqhbW6Oa3ChynC2bc-JoYXV0aERhdGFYpCzXk8-gtBjLvw6oUiKGB9npezM9TbCkEBd2ava7jHVRQQAAAAAAAAAAAAAAAAAAAAAAAAAAACAeEV8OookaEAnZsZ6sTBQd34n7FG-UChiAg_h4Wds73qUBAgMmIAEhWCAxZCF_UplKr9yfSrWtQbCeHBu8kmi9wJpIldWlT3fFMiJYIMHLS8tIUgpZgxb706EC_Hx6P6qoeBZHKVhOtc80uLbz"
   , challenge = Challenge (BS.decodeLenient "TqyufS6bBjnhnNlOOAqcw_k_qoCeXkw-UnD6_T1LFzY")
@@ -110,22 +116,65 @@ fidoU2FAttestedKeyCredential = TestPublicKeyCredential
   , getSignature = BS.decodeLenient "MEYCIQDhsVWAb0QLCdfLpjfWSv1jDQXTlL-eR0jqxpY09UsO7QIhALG5c5ORMNAyRR2R7NcOWDLHKKmV9KZM5S1miiVhYmZ5"
   }
 
-fidoU2FAttestedTest = genericCredentialTest "FIDOU2F test" packedNonSelfAttestedKeyCredential
+fidoU2FAttestedTest = genericCredentialTest "FIDOU2F test" packedNonSelfAttestedKeyCredential Nothing
 
-genericCredentialTest :: String -> TestPublicKeyCredential -> TestTree
-genericCredentialTest name TestPublicKeyCredential{..} = testCaseSteps name $ \step -> do
+genericCredentialTest :: String -> TestPublicKeyCredential -> Maybe DateTime -> TestTree
+genericCredentialTest name TestPublicKeyCredential{..} now = testCaseSteps name $ \step -> do
   step "Registeration check..."
-  Just store <- readCertificateStore "test/cacert.pem"
-  eth <- registerCredential store (defaultCredentialCreationOptions
-      (defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing))
-      challenge
-      (User (Base64ByteString "id") Nothing Nothing)) clientDataJSON attestationObject
+  Just certificateStore <- readCertificateStore "test/cacert.pem"
+  eth <- RegisterCredentialArgs
+      { options = defaultCredentialCreationOptions
+        { rp = defRp
+        , challenge
+        , user = User (Base64ByteString "id") "display name"
+        }
+      , tokenBindingID = Nothing
+      , ..
+      }.run
   assertBool (show eth) (isRight eth)
   let Right cdata = eth
   step "Verification check..."
-  let eth = verify getChallenge defRp Nothing False getClientDataJSON getAuthenticatorData getSignature (credentialPublicKey cdata)
-  assertBool (show eth) (isRight eth)  
+  let eth = verify VerifyArgs
+        { challenge = getChallenge
+        , relyingParty = defRp
+        , requireVerification = False
+        , clientDataJSON = getClientDataJSON
+        , authenticatorData = getAuthenticatorData
+        , signature = getSignature
+        , credentialPublicKey = cdata.credentialPublicKey
+        , tokenBindingID = Nothing
+        }
+  assertBool (show eth) (isRight eth)
 
+registrationTest :: TestTree
+registrationTest = testCaseSteps "Credentials Test" $ \step -> do
+  step "Credential creation"
+  let pkcco = CredentialCreationOptions
+        { rp = defRp
+        , challenge = Challenge "12343434"
+        , user = User (Base64ByteString "id") "display name"
+        , pubKeyCredParams = ES256 :| []
+        , timeout = Nothing
+        , attestation = Nothing
+        , authenticatorSelection = Nothing
+        , extensions = Nothing
+        , excludeCredentials = Just [PublicKeyCredentialDescriptor PublicKey (Base64ByteString "1234") (Just (BLE :| []))]
+        }
+  let ref = [aesonQQ| {
+    "rp":{"id":"webauthn.biz", "name": "webauthn"},
+    "challenge":"MTIzNDM0MzQ=",
+    "user":{"id":"id", "name": "name", "displayName":"display name"},
+    "pubKeyCredParams":[
+      {
+        "type":"public-key",
+        "alg":-7
+      }],
+    "excludeCredentials":[
+      {"type":"public-key", "id": "MTIzNA==", "transports":["ble"]}
+      ]
+    }
+  |]
+  assertEqual "TOJSON not equal" ref (toJSON pkcco)
 
 androidClientDataJSON :: ByteString
 androidClientDataJSON = BS.decodeLenient "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWkIyQVJraDZ3RVBoZkdjSFBRWWpWNXNidmxoa3liVlN1ZFQ4Q0VzNTBsNCIsIm9yaWdpbiI6Imh0dHBzOlwvXC9wc3Rlbml1c3ViaS5naXRodWIuaW8iLCJhbmRyb2lkUGFja2FnZU5hbWUiOiJjb20uYW5kcm9pZC5jaHJvbWUifQ"
@@ -148,6 +197,3 @@ androidGetAuthenticatorData = BS.decodeLenient "LNeTz6C0GMu_DqhSIoYH2el7Mz1NsKQQ
 
 androidGetSignature :: ByteString
 androidGetSignature = BS.decodeLenient "MEQCIFM6aZjT8CefzdAn-QNaa5OcPU24V1SERVocZlus1YT1AiAH_UqNj7xVOW1sDLKkpicTxIONpwfWrWNbo8KL4z5wcA"
-
-errorOnLeft (Left e) = error e
-errorOnLeft (Right r) = r
