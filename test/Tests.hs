@@ -1,3 +1,5 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -122,9 +124,10 @@ genericCredentialTest name TestPublicKeyCredential{..} now = testCaseSteps name 
   Just certificateStore <- readCertificateStore "test/cacert.pem"
   eth <- RegisterCredentialArgs
       { options = defaultCredentialCreationOptions
-        (defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "webauthn")
-        challenge
-        (User (Base64ByteString "id") "display name")
+        { rp = defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "webauthn"
+        , challenge
+        , user = User (Base64ByteString "id") "display name"
+        }
       , tokenBindingID = Nothing
       , ..
       }.run

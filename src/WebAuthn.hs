@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 -----------------------------------------------------------------------
 -- |
@@ -73,6 +74,7 @@ import Data.X509.CertificateStore qualified as X509
 import GHC.Records
 import Prelude hiding (fail)
 import WebAuthn.AndroidSafetyNet qualified as Android
+import WebAuthn.Base
 import WebAuthn.FIDOU2F qualified as U2F
 import WebAuthn.Packed qualified as Packed
 import WebAuthn.Signature
@@ -149,31 +151,31 @@ encodeAttestation AttestationObject{..} = CBOR.encodeMapLen 3
       AF_AndroidSafetyNet _ -> CBOR.encodeString "android-safetynet"
       AF_None -> CBOR.encodeString "none"
 
-data RegisterCredentialArgs = RegisterCredentialArgs
+data RegisterCredentialArgs t = RegisterCredentialArgs
   { certificateStore :: X509.CertificateStore
-  , options :: CredentialCreationOptions
-  , clientDataJSON :: ByteString
-  , attestationObject :: ByteString
+  , options :: CredentialCreationOptions t
+  , clientDataJSON :: Required t ByteString
+  , attestationObject :: Required t ByteString
   , now :: Maybe DateTime
   , tokenBindingID :: Maybe Text
   }
 
-defaultRegisterCredentialArgs :: RegisterCredentialArgs
+defaultRegisterCredentialArgs :: RegisterCredentialArgs Incomplete
 defaultRegisterCredentialArgs = RegisterCredentialArgs
   { certificateStore = mempty
-  , options = error "CredentialCreationOptions"
-  , clientDataJSON = error "ClientDataJSON"
-  , attestationObject = error "ByteString"
+  , options = defaultCredentialCreationOptions
+  , clientDataJSON = ()
+  , attestationObject = ()
   , now = Nothing
   , tokenBindingID = Nothing
   }
 
-instance HasField "run" RegisterCredentialArgs (IO (Either VerificationFailure AttestedCredentialData)) where
+instance t ~ Complete => HasField "run" (RegisterCredentialArgs t) (IO (Either VerificationFailure AttestedCredentialData)) where
   getField = registerCredential
 
 -- | 7.1. Registering a New Credential
 registerCredential :: forall m. MonadIO m
-  => RegisterCredentialArgs
+  => RegisterCredentialArgs Complete
   -> m (Either VerificationFailure AttestedCredentialData)
 registerCredential RegisterCredentialArgs{attestationObject = rawAttObj, ..} = runExceptT $ do
   _ <- hoistEither runAttestationCheck

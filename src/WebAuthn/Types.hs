@@ -2,11 +2,14 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TypeFamilies #-}
 module WebAuthn.Types (
   -- * Relying party
   RelyingParty(..)
@@ -353,35 +356,38 @@ instance ToJSON AuthenticatorSelection where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
-data CredentialCreationOptions = CredentialCreationOptions
-  { rp :: RelyingParty
-  , user :: User
-  , challenge :: Challenge
+data CredentialCreationOptions t = CredentialCreationOptions
+  { rp :: Required t RelyingParty
+  , user :: Required t User
+  , challenge :: Required t Challenge
   , pubKeyCredParams :: NonEmpty PubKeyCredAlg
   , timeout :: Maybe Integer
   , excludeCredentials :: Maybe [PublicKeyCredentialDescriptor]
   , authenticatorSelection :: Maybe AuthenticatorSelection
   , attestation :: Maybe Attestation
   , extensions :: Maybe Extensions
-  } deriving (Eq, Show, Generic)
-  deriving ToJSON via CustomJSON '[OmitNothingFields] CredentialCreationOptions
+  } deriving Generic
+
+deriving instance Show (CredentialCreationOptions Complete)
+deriving instance Eq (CredentialCreationOptions Complete)
+deriving via CustomJSON '[OmitNothingFields] (CredentialCreationOptions t)
+  instance t ~ Complete => ToJSON (CredentialCreationOptions t)
 
 defaultCredentialCreationOptions
-  :: RelyingParty
-  -> Challenge
-  -> User
-  -> CredentialCreationOptions
-defaultCredentialCreationOptions rp challenge user = CredentialCreationOptions
-  { timeout = Nothing
+  :: CredentialCreationOptions Incomplete
+defaultCredentialCreationOptions = CredentialCreationOptions
+  { rp = ()
+  , challenge = ()
+  , user = ()
+  , timeout = Nothing
   , pubKeyCredParams = NE.fromList [ES256, RS256]
   , attestation = Nothing
   , extensions = Nothing
   , authenticatorSelection = Nothing
   , excludeCredentials = Nothing
-  , ..
   }
 
-instance HasField "requireUserVerification" CredentialCreationOptions Bool where
+instance HasField "requireUserVerification" (CredentialCreationOptions t) Bool where
   getField CredentialCreationOptions{..} = fromMaybe False $ do
     AuthenticatorSelection{..} <- authenticatorSelection
     uv <- requireUserVerification

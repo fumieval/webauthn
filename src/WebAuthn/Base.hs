@@ -1,10 +1,14 @@
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE TypeFamilies #-}
 module WebAuthn.Base
   ( Base64ByteString(..)
   , Challenge(..)
   , AAGUID(..)
   , CredentialId(..)
   , CredentialPublicKey(..)
+  , Required
+  , Complete
+  , Incomplete
   ) where
 
 import Codec.Serialise qualified as CBOR
@@ -18,6 +22,7 @@ import Data.ByteString.Char8 qualified as B8
 import Data.Hashable
 import Data.String
 import Data.Text.Encoding ( decodeUtf8, encodeUtf8 )
+import Data.Kind (Type)
 import GHC.Generics (Generic)
 
 -- | A wrapper of 'ByteString' where its contents is Base64-encoded in JSON
@@ -63,3 +68,10 @@ newtype CredentialId = CredentialId { unCredentialId :: ByteString }
 newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: ByteString }
   deriving (Eq, Hashable, CBOR.Serialise)
   deriving (FromJSON, ToJSON, Show, IsString) via Base64ByteString
+
+data Complete
+data Incomplete
+
+type family Required a b :: Type where
+  Required Incomplete _ = ()
+  Required Complete t = t
