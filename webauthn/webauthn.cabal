@@ -21,12 +21,23 @@ common base-common
     , x509-store        >=1.6  && <1.7
     , hourglass         ^>= 0.2
   default-language:   Haskell2010
+  default-extensions:
+      LambdaCase
+    , DerivingStrategies
+    , DuplicateRecordFields
+    , NamedFieldPuns
+    , OverloadedStrings
+    , RecordWildCards
+    , ScopedTypeVariables
 
 library
   import:             base-common
   hs-source-dirs:     src
   exposed-modules:
     WebAuthn
+    WebAuthn.AuthenticatorData
+    WebAuthn.Assertion
+    WebAuthn.Attestation
     WebAuthn.Base
     WebAuthn.Attestation.Statement.AndroidSafetyNet
     WebAuthn.Attestation.Statement.FIDOU2F
@@ -34,7 +45,6 @@ library
     WebAuthn.Attestation.Statement.TPM
     WebAuthn.Signature
     WebAuthn.Types
-
   build-depends:
     , asn1-encoding     >=0.9  && <0.10
     , asn1-types        >=0.3  && <0.4
@@ -65,7 +75,6 @@ test-suite test-webauthn
   type:               exitcode-stdio-1.0
   hs-source-dirs:     test
   main-is:            Tests.hs
-
   build-depends:
     , interpolate    >=0.2  && <0.3
     , tasty          >=1.2  && <1.5

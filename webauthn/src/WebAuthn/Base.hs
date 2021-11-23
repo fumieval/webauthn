@@ -1,7 +1,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE TypeFamilies #-}
 module WebAuthn.Base
-  ( Base64ByteString(..)
+  ( Base64UrlByteString(..)
   , Challenge(..)
   , AAGUID(..)
   , CredentialId(..)
@@ -26,29 +26,29 @@ import Data.Kind (Type)
 import GHC.Generics (Generic)
 
 -- | A wrapper of 'ByteString' where its contents is Base64-encoded in JSON
-newtype Base64ByteString = Base64ByteString { unBase64ByteString :: ByteString } deriving (Generic, Eq, ByteArrayAccess)
+newtype Base64UrlByteString = Base64UrlByteString { unBase64UrlByteString :: ByteString } deriving (Generic, Eq, ByteArrayAccess)
 
-instance Show Base64ByteString where
-  show = show . Base64.encode . unBase64ByteString
+instance Show Base64UrlByteString where
+  show = show . Base64.encode . unBase64UrlByteString
 
 -- | Expects Base64
-instance IsString Base64ByteString where
-  fromString = Base64ByteString . Base64.decodeLenient . B8.pack
+instance IsString Base64UrlByteString where
+  fromString = Base64UrlByteString . Base64.decodeLenient . B8.pack
 
-instance ToJSON Base64ByteString where
-  toJSON (Base64ByteString bs) = String $ decodeUtf8 $ Base64.encode bs
+instance ToJSON Base64UrlByteString where
+  toJSON (Base64UrlByteString bs) = String $ decodeUtf8 $ Base64.encode bs
 
-instance FromJSON Base64ByteString where
-  parseJSON = withText "Base64ByteString" $ \v -> do
+instance FromJSON Base64UrlByteString where
+  parseJSON = withText "Base64UrlByteString" $ \v -> do
     let eth = Base64.decode (encodeUtf8 v)
     case eth of
       Left err -> typeMismatch ("Base64: " <> err) (String v)
-      Right str -> pure (Base64ByteString str)
+      Right str -> pure (Base64UrlByteString str)
 
 -- | 13.1. Cryptographic Challenges
 newtype Challenge = Challenge { rawChallenge :: ByteString }
   deriving (Eq, Ord, Generic, Hashable, CBOR.Serialise)
-  deriving (FromJSON, ToJSON, Show, IsString) via Base64ByteString
+  deriving (FromJSON, ToJSON, Show, IsString) via Base64UrlByteString
 
 -- | AAGUID of the authenticator
 newtype AAGUID = AAGUID { unAAGUID :: ByteString } deriving (Show, Eq)
@@ -62,12 +62,12 @@ instance ToJSON AAGUID where
 -- | A probabilistically-unique byte sequence identifying a public key credential source and its authentication assertions.
 newtype CredentialId = CredentialId { unCredentialId :: ByteString }
   deriving (Eq, Generic, Hashable, CBOR.Serialise)
-  deriving (FromJSON, ToJSON, Show, IsString) via Base64ByteString
+  deriving (FromJSON, ToJSON, Show, IsString) via Base64UrlByteString
 
 -- | credential public key encoded in COSE_Key format
 newtype CredentialPublicKey = CredentialPublicKey { unCredentialPublicKey :: ByteString }
   deriving (Eq, Hashable, CBOR.Serialise)
-  deriving (FromJSON, ToJSON, Show, IsString) via Base64ByteString
+  deriving (FromJSON, ToJSON, Show, IsString) via Base64UrlByteString
 
 data Complete
 data Incomplete

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
-module WebAuthn.Signature (PublicKey(..)
+module WebAuthn.Signature
+  ( PublicKey(..)
   , parsePublicKey
   , verifySig
   , verifyX509Sig
@@ -28,6 +29,7 @@ import qualified Data.X509 as X509
 import qualified Data.X509.Validation as X509
 
 data PublicKey = PubEC EC.PublicKey | PubRSA RSA.PublicKey
+  deriving (Show, Eq)
 
 verifySig :: PublicKey
   -> B.ByteString -- ^ signature

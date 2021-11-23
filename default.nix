@@ -19,6 +19,6 @@ in
   if pkgs.lib.inNixShell
     then haskellPackages.shellFor {
            packages = ps: [ webauthn wai-middleware-webauthn demo ];
-           buildInputs = with pkgs; [ cabal-install hlint haskellPackages.ghcid ];
+           buildInputs = with pkgs; [ cabal-install hlint haskell.packages.ghc884.haskell-language-server ];
          }
     else webauthn
