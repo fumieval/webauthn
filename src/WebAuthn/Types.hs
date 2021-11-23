@@ -12,9 +12,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module WebAuthn.Types (
   -- * Relying party
-  RelyingParty(..)
-  , Origin(..)
-  , defaultRelyingParty
+  Origin(..)
   , TokenBinding(..)
   -- Challenge
   , Challenge(..)
@@ -37,6 +35,9 @@ module WebAuthn.Types (
   , PublicKeyCredentialDescriptor(..)
   , AuthenticatorTransport(..)
   , PublicKeyCredentialType(..)
+  , PublicKeyCredentialRpEntity(..)
+  , originToRelyingParty
+  , isRegistrableDomainSuffixOfOrIsEqualTo
   , CredentialCreationOptions(..)
   , defaultCredentialCreationOptions
   , Attestation (..)
@@ -63,8 +64,6 @@ import Data.Aeson as J
       Options(..)
       , genericToEncoding
       , defaultOptions
-      , object
-      , (.=)
     )
 
 import Codec.CBOR.Read qualified as CBOR
@@ -74,13 +73,13 @@ import Control.Monad.Fail ( MonadFail(fail) )
 import Crypto.Hash ( SHA256, Digest )
 import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.Aeson (genericToJSON)
-import Data.Aeson qualified as Aeson
-import Data.Aeson.Types (Pair)
 import Data.ByteString (ByteString)
 import Data.Char ( toLower, toUpper )
+import Data.List (isSuffixOf)
 import Data.List.NonEmpty as NE
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.String
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as T
@@ -136,28 +135,6 @@ instance ToJSON Origin where
       mkPort (Just int) = ":" <> T.pack (show int)
       mkPort Nothing = ""
 
--- | WebAuthn Relying Party
-data RelyingParty = RelyingParty
-  { origin :: Origin
-  , id :: Text
-  , icon :: Maybe Base64ByteString
-  , name :: Text
-  }
-  deriving (Show, Eq, Generic)
-
-instance ToJSON RelyingParty where
-  toJSON RelyingParty{id = id', ..} = object
-    $ ["id" .= toJSON id']
-    <> maybeToPair "icon" icon
-    <> [ "name" .= name]
-
-maybeToPair :: Aeson.Key -> Maybe Base64ByteString -> [Pair]
-maybeToPair _ Nothing = []
-maybeToPair lbl (Just bs) = [lbl .= toJSON bs]
-
-defaultRelyingParty :: Origin -> Text -> RelyingParty
-defaultRelyingParty orig@Origin{host} = RelyingParty orig host Nothing
-
 instance FromJSON Origin where
   parseJSON = withText "Origin" $ \str -> case T.break (==':') str of
     (sch, url) -> case T.break (==':') $ T.drop 3 url of
@@ -206,7 +183,7 @@ instance CBOR.Serialise User where
 data VerificationFailure
   = InvalidType
   | MismatchedChallenge Challenge Challenge
-  | MismatchedOrigin Origin Origin
+  | MismatchedOrigin PublicKeyCredentialRpEntity Origin
   | UnexpectedPresenceOfTokenBinding
   | MismatchedTokenBinding
   | JSONDecodeError String
@@ -356,8 +333,23 @@ instance ToJSON AuthenticatorSelection where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
+-- | https://www.w3.org/TR/webauthn-1/#sctn-rp-credential-params
+newtype PublicKeyCredentialRpEntity = PublicKeyCredentialRpEntity { id :: Text }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+  deriving newtype IsString
+
+originToRelyingParty :: Origin -> PublicKeyCredentialRpEntity
+originToRelyingParty Origin{host} = PublicKeyCredentialRpEntity host
+
+-- | https://html.spec.whatwg.org/multipage/origin.html#is-a-registrable-domain-suffix-of-or-is-equal-to
+isRegistrableDomainSuffixOfOrIsEqualTo :: PublicKeyCredentialRpEntity -> Origin -> Bool
+isRegistrableDomainSuffixOfOrIsEqualTo (PublicKeyCredentialRpEntity hostSuffixString) Origin{host = originalHost}
+  = not (T.null hostSuffixString)
+  && isSuffixOf (T.splitOn "." hostSuffixString) (T.splitOn "." originalHost)
+
 data CredentialCreationOptions t = CredentialCreationOptions
-  { rp :: Required t RelyingParty
+  { rp :: Required t PublicKeyCredentialRpEntity
   , user :: Required t User
   , challenge :: Required t Challenge
   , pubKeyCredParams :: NonEmpty PubKeyCredAlg

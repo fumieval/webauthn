@@ -27,11 +27,11 @@ import WebAuthn.Types
       AuthenticatorTransport(BLE),
       User(User),
       AttestedCredentialData(..),
-      RelyingParty,
       Origin(Origin),
       Challenge(Challenge),
       Base64ByteString(Base64ByteString),
-      defaultRelyingParty, PublicKeyCredentialType (PublicKey) )
+      PublicKeyCredentialType (PublicKey),
+      PublicKeyCredentialRpEntity )
 import Data.Aeson.QQ.Simple ( aesonQQ )
 import Data.List.NonEmpty ( NonEmpty((:|)) )
 import Data.Aeson.Encoding (value)
@@ -56,8 +56,8 @@ androidTests = testGroup "WebAuthn Tests"
 androidCredentialTest :: TestTree
 androidCredentialTest = genericCredentialTest "Android test" androidPublicKeyCredential (Just $ timeConvert (Date 2020 June 1))
 
-defRp :: RelyingParty
-defRp = defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "webauthn"
+defRp :: PublicKeyCredentialRpEntity
+defRp = "psteniusubi.github.io"
 
 decodePanic :: FromJSON a => ByteString -> a
 decodePanic s = either error Prelude.id (A.eitherDecode (BL.fromStrict s))
@@ -124,7 +124,7 @@ genericCredentialTest name TestPublicKeyCredential{..} now = testCaseSteps name 
   Just certificateStore <- readCertificateStore "test/cacert.pem"
   eth <- RegisterCredentialArgs
       { options = defaultCredentialCreationOptions
-        { rp = defaultRelyingParty (Origin "https" "psteniusubi.github.io" Nothing) "webauthn"
+        { rp = defRp
         , challenge
         , user = User (Base64ByteString "id") "display name"
         }
@@ -150,7 +150,7 @@ registrationTest :: TestTree
 registrationTest = testCaseSteps "Credentials Test" $ \step -> do
   step "Credential creation"
   let pkcco = CredentialCreationOptions
-        { rp = defaultRelyingParty (Origin "https" "webauthn.biz" Nothing) "webauthn"
+        { rp = defRp
         , challenge = Challenge "12343434"
         , user = User (Base64ByteString "id") "display name"
         , pubKeyCredParams = ES256 :| []

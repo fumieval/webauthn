@@ -21,8 +21,6 @@ module WebAuthn (
   -- * Basic
   TokenBinding(..)
   , Origin(..)
-  , RelyingParty(..)
-  , defaultRelyingParty
   , User(..)
   -- Challenge
   , Challenge(..)
@@ -35,6 +33,8 @@ module WebAuthn (
   , AAGUID(..)
   , CredentialPublicKey(..)
   , CredentialId(..)
+  , PublicKeyCredentialRpEntity(..)
+  , originToRelyingParty
   -- * verfication
   , VerificationFailure(..)
   , RegisterCredentialArgs(..)
@@ -205,7 +205,7 @@ registerCredential RegisterCredentialArgs{attestationObject = rawAttObj, ..} = r
         (Left . JSONDecodeError) Right $ J.eitherDecode $ BL.fromStrict clientDataJSON
       ccd._type == Create ?? InvalidType
       challenge == ccd.challenge ?? MismatchedChallenge challenge ccd.challenge
-      rp.origin == ccd.origin ?? MismatchedOrigin rp.origin ccd.origin
+      isRegistrableDomainSuffixOfOrIsEqualTo rp ccd.origin ?? MismatchedOrigin rp ccd.origin
       case ccd.tokenBinding of
         TokenBindingUnsupported -> pure ()
         TokenBindingSupported -> pure ()
@@ -234,7 +234,7 @@ registerCredential RegisterCredentialArgs{attestationObject = rawAttObj, ..} = r
 
 data VerifyArgs = VerifyArgs
   { challenge :: Challenge
-  , relyingParty :: RelyingParty
+  , relyingParty :: PublicKeyCredentialRpEntity
   , tokenBindingID :: Maybe Text
   , requireVerification :: Bool
   , clientDataJSON :: ByteString
@@ -257,12 +257,12 @@ verify VerifyArgs{..} = do
   pub' <- parsePublicKey credentialPublicKey
   verifySig pub' signature dat
 
-clientDataCheck :: WebAuthnType -> Challenge -> ByteString -> RelyingParty -> Maybe Text -> Either VerificationFailure ()
+clientDataCheck :: WebAuthnType -> Challenge -> ByteString -> PublicKeyCredentialRpEntity -> Maybe Text -> Either VerificationFailure ()
 clientDataCheck ctype challenge clientDataJSON rp tbi = do
   ccd :: CollectedClientData <- first JSONDecodeError (J.eitherDecode $ BL.fromStrict clientDataJSON)
   ccd._type == ctype ?? InvalidType
   challenge == ccd.challenge ?? MismatchedChallenge challenge ccd.challenge
-  rp.origin == ccd.origin ?? MismatchedOrigin rp.origin ccd.origin
+  isRegistrableDomainSuffixOfOrIsEqualTo rp ccd.origin ?? MismatchedOrigin rp ccd.origin
   verifyClientTokenBinding tbi ccd.tokenBinding
 
 verifyClientTokenBinding :: Maybe Text -> TokenBinding -> Either VerificationFailure ()
@@ -273,10 +273,10 @@ verifyClientTokenBinding tbi (TokenBindingPresent t) = case tbi of
         | otherwise -> Left MismatchedTokenBinding
 verifyClientTokenBinding _ _ = pure ()
 
-verifyAuthenticatorData :: RelyingParty -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
-verifyAuthenticatorData rp adRaw verificationRequired = do
+verifyAuthenticatorData :: PublicKeyCredentialRpEntity -> ByteString -> Bool -> Either VerificationFailure AuthenticatorData
+verifyAuthenticatorData (PublicKeyCredentialRpEntity rpId) adRaw verificationRequired = do
   ad@AuthenticatorData{..} <- first (MalformedAuthenticatorData . pack) (C.runGet parseAuthenticatorData adRaw)
-  hash (encodeUtf8 rp.id) == rpIdHash ?? MismatchedRPID
+  hash (encodeUtf8 rpId) == rpIdHash ?? MismatchedRPID
   userPresent ?? UserNotPresent
   not verificationRequired || userVerified ?? UserUnverified
   pure ad

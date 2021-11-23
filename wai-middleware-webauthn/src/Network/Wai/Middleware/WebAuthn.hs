@@ -103,7 +103,6 @@ mkMiddleware Config{..} = do
   certificateStore <- X509.readCertificateStore certStore >>= \case
     Nothing -> fail $ "Failed to obtain certification store from " <> certStore
     Just a -> pure a
-  let theRelyingParty = W.defaultRelyingParty origin "Display Name"
 
   _ <- forkIO $ forever $ do
       now <- getMonotonicTime
@@ -126,7 +125,7 @@ mkMiddleware Config{..} = do
           defaultRegisterCredentialArgs
             { certificateStore
             , options = defaultCredentialCreationOptions
-              { rp = theRelyingParty
+              { rp = originToRelyingParty origin
               , challenge
               , user
               }
@@ -145,7 +144,7 @@ mkMiddleware Config{..} = do
         findPublicKey handler cid >>= \case
           Just (name, pub) -> case verify VerifyArgs
             { challenge = challenge
-            , relyingParty = theRelyingParty
+            , relyingParty = originToRelyingParty origin
             , tokenBindingID = Nothing
             , requireVerification = False
             , clientDataJSON = cdj
