@@ -33,6 +33,7 @@ module WebAuthn.Types (
   , StmtSafetyNet(..)
   , JWTHeader(..)
   , Base64ByteString(..)
+  , PublicKeyCredentialRequestOptions(..)
   , PublicKeyCredentialDescriptor(..)
   , AuthenticatorTransport(..)
   , PublicKeyCredentialType(..)
@@ -260,6 +261,19 @@ data UserVerification = Required | Preferred | Discouraged deriving (Show, Eq, G
 instance ToJSON UserVerification where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
+
+data PublicKeyCredentialRequestOptions =  PublicKeyCredentialRequestOptions
+  { challenge :: Challenge
+  , timeout :: Maybe Integer
+  , rpId :: Maybe Text
+  , allowCredentials ::Maybe (NonEmpty PublicKeyCredentialDescriptor)
+  , userVerification :: Maybe UserVerification
+  -- extensions omitted as support is minimal https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialRequestOptions/extensions
+  } deriving (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialRequestOptions where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True}
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True}
 
 data PubKeyCredAlg = ES256 -- -7
   | RS256 -- (-257)
