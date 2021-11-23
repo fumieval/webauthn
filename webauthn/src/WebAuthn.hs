@@ -167,7 +167,6 @@ verifyRegistration VerifyRegistrationArgs{..} = runExceptT $ do
   --
   -- 5. to 10.
   c :: CollectedClientData <- except $ first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict clientDataJSON
-  let PublicKeyCredentialCreationOptions{ challenge } = options
   except $ Attestation.verifyCollectedClientData rp challenge tokenBindingID c
   -- 11.
   let hash = H.hash clientDataJSON :: H.Digest H.SHA256
@@ -181,7 +180,6 @@ verifyRegistration VerifyRegistrationArgs{..} = runExceptT $ do
   let uvRequired = options.requireUserVerification
   except $ when (uvRequired && not authData.userVerified) $ Left UserUnverified
   -- 16.
-  let PublicKeyCredentialCreationOptions{ pubKeyCredParams } = options
   mAdPubKey <- except $ Attestation.verifyPubKey pubKeyCredParams authData
   -- 17.
   -- We currently do not support any extensions. Skip forward.

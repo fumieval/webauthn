@@ -46,7 +46,7 @@ module WebAuthn.Types (
   , isRegistrableDomainSuffixOfOrIsEqualTo
   , PublicKeyCredentialCreationOptions(..)
   , defaultPublicKeyCredentialCreationOptions
-  , Attestation (..)
+  , AttestationConveyancePreference(..)
   , Extensions (..)
   , AuthenticatorSelection (..)
   , PubKeyCredAlg (..)
@@ -119,10 +119,10 @@ instance ToJSON ResidentKeyRequirement where
     ResidentKeyRequired -> String "required"
 
 -- | 5.4.7. Attestation Conveyance Preference Enumeration (enum AttestationConveyancePreference)
-data Attestation = None | Direct | Indirect | Enterprise
+data AttestationConveyancePreference = None | Direct | Indirect | Enterprise
   deriving stock (Eq, Show, Generic)
 
-instance ToJSON Attestation where
+instance ToJSON AttestationConveyancePreference where
   toJSON = J.String . \case
     None -> "none"
     Direct -> "direct"
@@ -451,7 +451,7 @@ data PublicKeyCredentialCreationOptions t = PublicKeyCredentialCreationOptions
   , timeout :: Maybe Integer
   , excludeCredentials :: Maybe [PublicKeyCredentialDescriptor]
   , authenticatorSelection :: Maybe AuthenticatorSelection
-  , attestation :: Maybe Attestation
+  , attestation :: Maybe AttestationConveyancePreference
   , extensions :: Maybe Extensions
   } deriving Generic
 
