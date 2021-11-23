@@ -4,13 +4,15 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 module WebAuthn.Attestation where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
+import Crypto.Hash as H
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map as Map
 import Data.String
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 import Data.List.NonEmpty (NonEmpty)
 
 import qualified Codec.CBOR.Term as CBOR
@@ -22,6 +24,7 @@ import qualified WebAuthn.Attestation.Statement.FIDOU2F as FIDOU2F
 import qualified WebAuthn.Attestation.Statement.Packed as Packed
 import qualified WebAuthn.Attestation.Statement.TPM as TPM
 import WebAuthn.AuthenticatorData
+import WebAuthn.Common
 import WebAuthn.Signature ( hasMatchingAlg, parsePublicKey, PublicKey )
 import WebAuthn.Types
 
@@ -46,7 +49,7 @@ data AttestationStatement
   = ASPacked Packed.Stmt
   | ASTpm TPM.Stmt
   | ASAndroidKey
-  | ASAndroidSafetyNet StmtSafetyNet
+  | ASAndroidSafetyNet AndroidSafetyNet.Stmt
   | ASFidou2f FIDOU2F.Stmt
   -- 8.7. None Attestation Statement Format (not in the IANA registry)
   | ASNone
@@ -62,6 +65,7 @@ verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientDat
   -- 9.
   unless (isRegistrableDomainSuffixOfOrIsEqualTo rpOrigin origin) $ Left $ MismatchedOrigin rpOrigin origin
   -- 10.
+  verifyTokenBinding rpTokenBinding tokenBinding
   case rpTokenBinding of
     Just rpTb ->
       case tokenBinding of
@@ -79,6 +83,16 @@ verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientDat
     Nothing ->
       -- RP did not provide TB, nothing to check
       pure ()
+
+-- | 7.1 steps 13. to 15.
+verifyAttestationObject :: PublicKeyCredentialRpEntity -> Bool -> AttestationObject -> Either VerificationFailure ()
+verifyAttestationObject rpId uvRequired AttestationObject{..} = do
+  -- 13.
+  unless (H.hash (encodeUtf8 rpId.id) == authData.rpIdHash) $ Left MismatchedRPID
+  -- 14.
+  unless authData.userPresent $ Left UserNotPresent
+  -- 15.
+  when (uvRequired && not authData.userVerified) $ Left UserUnverified
 
 verifyPubKey :: NonEmpty PubKeyCredAlg -> AuthenticatorData -> Either VerificationFailure (Maybe PublicKey)
 verifyPubKey pubKeyCredParams AuthenticatorData{..} = do

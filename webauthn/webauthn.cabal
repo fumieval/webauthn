@@ -39,6 +39,7 @@ library
     WebAuthn.Assertion
     WebAuthn.Attestation
     WebAuthn.Base
+    WebAuthn.Common
     WebAuthn.Attestation.Statement.AndroidSafetyNet
     WebAuthn.Attestation.Statement.FIDOU2F
     WebAuthn.Attestation.Statement.Packed

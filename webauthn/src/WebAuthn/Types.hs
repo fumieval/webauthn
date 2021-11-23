@@ -33,9 +33,6 @@ module WebAuthn.Types (
   , VerificationFailure(..)
   -- * Types
   , AuthenticatorAttestationResponse(..)
-  , AndroidSafetyNet(..)
-  , StmtSafetyNet(..)
-  , JWTHeader(..)
   , Base64UrlByteString(..)
   , PublicKeyCredentialRequestOptions(..)
   , PublicKeyCredentialDescriptor(..)
@@ -92,7 +89,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as T
 import Data.Word (Word32)
-import Data.X509 qualified as X509
 import Deriving.Aeson
 import GHC.Records
 import WebAuthn.Base
@@ -325,30 +321,6 @@ data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
   --, publicKey 
   --, publicKeyAlgorithm 
   }
-
-data AndroidSafetyNet = AndroidSafetyNet
-  { timestampMs :: Integer
-  , nonce :: [Char]
-  , apkPackageName :: Text
-  , apkCertificateDigestSha256 :: [Text]
-  , ctsProfileMatch :: Bool
-  , basicIntegrity :: Bool
-  } deriving stock (Show, Generic)
-    deriving anyclass (FromJSON)
-
-data StmtSafetyNet = StmtSafetyNet
-  { header :: Base64UrlByteString
-  , payload :: Base64UrlByteString
-  , signature_ :: ByteString
-  , certificates :: X509.CertificateChain
-  } deriving stock Show
-
-data JWTHeader = JWTHeader
-  { alg :: Text
-  , x5c :: [Text]
-  } deriving (Show, Generic)
-
-instance FromJSON JWTHeader
 
 data PublicKeyCredentialType = PublicKey deriving (Eq, Show, Generic)
 
