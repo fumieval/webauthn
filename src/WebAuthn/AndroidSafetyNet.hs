@@ -14,7 +14,6 @@ import WebAuthn.Types
 import qualified Codec.CBOR.Term as CBOR
 import qualified Codec.CBOR.Decoding as CBOR
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL hiding (pack)
@@ -37,7 +36,10 @@ import Time.Types (DateTime)
 decode :: CBOR.Term -> CBOR.Decoder s StmtSafetyNet
 decode (CBOR.TMap xs) = do
   let m = Map.fromList xs
-  let CBOR.TBytes response = fromMaybe (CBOR.TString "response") (Map.lookup (CBOR.TString "response") m)
+  response <- case Map.lookup (CBOR.TString "response") m of
+    Nothing -> fail "StmySafetyNet: Missing response"
+    Just (CBOR.TBytes bs) -> pure bs
+    Just term -> fail $ "StmySafetyNet: Expecting TBytes but got " <> show term
   case B.split (fromIntegral . ord $ '.') response of
     (h : p : s : _) -> StmtSafetyNet (Base64ByteString h) (Base64ByteString p) (Base64URL.decodeLenient s) <$> getCertificateChain h
     _ -> fail "decodeSafetyNet: response was not a JWT"
