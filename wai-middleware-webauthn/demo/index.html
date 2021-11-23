@@ -80,7 +80,7 @@
           };
         auth.register(user).then(result => {
           var div = document.createElement("section");
-          div.innerHTML = "Add the following pair to config.yaml: <pre><code>"
+          div.innerHTML = "Add the following pair to config.yaml and restart: <pre><code>"
             + user.displayName + ":"
             + "\n- aaguid: '" + result.aaguid
             + "'\n  credentialId: " + result.credentialId
