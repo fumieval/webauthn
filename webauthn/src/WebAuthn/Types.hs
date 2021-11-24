@@ -10,49 +10,39 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeFamilies #-}
-module WebAuthn.Types (
-  -- * Relying party
-  Origin(..)
-  , displayOrigin
-  , parseOrigin
-  , TokenBinding(..)
-  -- Challenge
-  , Challenge(..)
-  , WebAuthnType(..)
-  , CollectedClientData(..)
-  , UserVerificationRequirement(..)
-  , AuthenticatorData(..)
-  -- * Credential
-  , AttestedCredentialData(..)
-  , AAGUID(..)
-  , CredentialPublicKey(..)
-  , CredentialId(..)
-  , User(..)
-  , PublicKeyCredential(..)
-  -- * Exception
-  , VerificationFailure(..)
-  -- * Types
-  , AuthenticatorAttestationResponse(..)
-  , Base64UrlByteString(..)
-  , PublicKeyCredentialRequestOptions(..)
-  , PublicKeyCredentialDescriptor(..)
-  , AuthenticatorTransport(..)
-  , PublicKeyCredentialType(..)
-  , PublicKeyCredentialRpEntity(..)
-  , originToRelyingParty
-  , isRegistrableDomainSuffixOfOrIsEqualTo
-  , PublicKeyCredentialCreationOptions(..)
-  , defaultPublicKeyCredentialCreationOptions
+module WebAuthn.Types
+  ( AAGUID(..)
   , AttestationConveyancePreference(..)
-  , Extensions (..)
-  , AuthenticatorSelection (..)
-  , PubKeyCredAlg (..)
-  , pubKeyCredAlgFromInt32
-  , AuthnSel(..)
-  , BiometricPerfBounds(..)
-  , AuthenticatorAttachment(..)
-  , SignCount(..)
+  , AttestedCredentialData(..)
   , AuthenticatorAssertionResponse(..)
+  , AuthenticatorAttachment(..)
+  , AuthenticatorAttestationResponse(..)
+  , AuthenticatorData(..)
+  , AuthenticatorSelection (..)
+  , AuthenticatorTransport(..)
+  , AuthnSel(..)
+  , Base64UrlByteString(..)
+  , BiometricPerfBounds(..)
+  , Challenge(..)
+  , CollectedClientData(..)
+  , CredentialId(..)
+  , CredentialPublicKey(..)
+  , Extensions (..)
+  , COSEAlgorithmIdentifier (..), pubKeyCredAlgFromInt32
+  , PublicKeyCredential(..)
+  , PublicKeyCredentialCreationOptions(..), defaultPublicKeyCredentialCreationOptions
+  , PublicKeyCredentialDescriptor(..)
+  , PublicKeyCredentialRequestOptions(..)
+  , PublicKeyCredentialRpEntity(..), originToRelyingParty, isRegistrableDomainSuffixOfOrIsEqualTo
+  , PublicKeyCredentialParameters(..)
+  , PublicKeyCredentialType(..)
+  , SignCount(..)
+  , TokenBinding(..)
+  , User(..)
+  , UserVerificationRequirement(..)
+  , VerificationFailure(..)
+  , WebAuthnType(..)
+  , Origin(..), displayOrigin, parseOrigin
   ) where
 
 import Prelude hiding (fail)
@@ -60,6 +50,8 @@ import Data.Aeson as J
     (Value(..),
       (.:),
       (.:?),
+      object,
+      (.=),
       withObject,
       withText,
       constructorTagModifier,
@@ -141,18 +133,18 @@ instance ToJSON PublicKeyCredentialRequestOptions where
   toEncoding = J.genericToEncoding defaultOptions { omitNothingFields = True}
   toJSON = J.genericToJSON defaultOptions { omitNothingFields = True}
 
-data PubKeyCredAlg
+data COSEAlgorithmIdentifier
   = ES256 -- (-7)
   | RS256 -- (-257)
   | PS256 -- (-37)
   deriving stock (Show, Eq)
 
-instance ToJSON PubKeyCredAlg where
+instance ToJSON COSEAlgorithmIdentifier where
   toJSON ES256 = Number (-7)
   toJSON RS256 = Number (-257)
   toJSON PS256 = Number (-37)
 
-pubKeyCredAlgFromInt32 :: Int32 -> Maybe PubKeyCredAlg
+pubKeyCredAlgFromInt32 :: Int32 -> Maybe COSEAlgorithmIdentifier
 pubKeyCredAlgFromInt32 = \case
   -7   -> Just ES256
   -257 -> Just RS256
@@ -338,11 +330,18 @@ instance ToJSON AuthenticatorTransport where
   toJSON = genericToJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
-  { _type :: PublicKeyCredentialType
+  { typ :: PublicKeyCredentialType
   , id :: CredentialId
   , transports :: Maybe (NonEmpty AuthenticatorTransport)
   } deriving (Eq, Show, Generic)
-  deriving ToJSON via CustomJSON '[FieldLabelModifier (StripPrefix "_", CamelToSnake), OmitNothingFields] PublicKeyCredentialDescriptor
+
+instance ToJSON PublicKeyCredentialDescriptor where
+  toJSON PublicKeyCredentialDescriptor{ typ, id = credId, transports } = object $
+    [ "type" .= toJSON typ
+    , "id" .= toJSON credId
+    ] ++ mtransports
+    where
+      mtransports = maybe [] (\x -> [ "transports" .= toJSON x ]) transports
 
 newtype AuthnSel = AuthnSel [Base64UrlByteString] deriving (Show, Eq, Generic)
 
@@ -415,11 +414,23 @@ instance FromJSON AuthenticatorAssertionResponse where
       <*> fmap unBase64UrlByteString (o .: "signature")
       <*> fmap (fmap unBase64UrlByteString) (o .: "userHandler")
 
+-- | 5.3. Parameters for Credential Generation (dictionary PublicKeyCredentialParameters)
+data PublicKeyCredentialParameters = PublicKeyCredentialParameters
+  { typ :: PublicKeyCredentialType
+  , alg :: COSEAlgorithmIdentifier
+  } deriving stock (Eq, Show, Generic)
+
+instance ToJSON PublicKeyCredentialParameters where
+  toJSON PublicKeyCredentialParameters{..} = object
+    [ "type" .= toJSON typ
+    , "alg" .= toJSON alg
+    ]
+
 data PublicKeyCredentialCreationOptions t = PublicKeyCredentialCreationOptions
   { rp :: Required t PublicKeyCredentialRpEntity
   , user :: Required t User
   , challenge :: Required t Challenge
-  , pubKeyCredParams :: NonEmpty PubKeyCredAlg
+  , pubKeyCredParams :: NonEmpty PublicKeyCredentialParameters
   , timeout :: Maybe Integer
   , excludeCredentials :: Maybe [PublicKeyCredentialDescriptor]
   , authenticatorSelection :: Maybe AuthenticatorSelection
@@ -439,7 +450,7 @@ defaultPublicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions
   , challenge = ()
   , user = ()
   , timeout = Nothing
-  , pubKeyCredParams = NE.fromList [ES256, RS256]
+  , pubKeyCredParams = PublicKeyCredentialParameters PublicKey <$> NE.fromList [ES256, RS256]
   , attestation = Nothing
   , extensions = Nothing
   , authenticatorSelection = Nothing

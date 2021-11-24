@@ -94,12 +94,12 @@ verifyAttestationObject rpId uvRequired AttestationObject{..} = do
   -- 15.
   when (uvRequired && not authData.userVerified) $ Left UserUnverified
 
-verifyPubKey :: NonEmpty PubKeyCredAlg -> AuthenticatorData -> Either VerificationFailure (Maybe PublicKey)
+verifyPubKey :: NonEmpty PublicKeyCredentialParameters -> AuthenticatorData -> Either VerificationFailure (Maybe PublicKey)
 verifyPubKey pubKeyCredParams AuthenticatorData{..} = do
   case attestedCredentialData of
     Just k -> do
       parsedPubKey <- parsePublicKey k.credentialPublicKey
-      unless (any (hasMatchingAlg parsedPubKey) pubKeyCredParams) $ Left $ MalformedAuthenticatorData "No matching algo"
+      unless (any (hasMatchingAlg parsedPubKey . (.alg)) pubKeyCredParams) $ Left $ MalformedAuthenticatorData "No matching algo"
       pure $ Just parsedPubKey
     -- non present public key will fail anyway or the fmt == 'none'
     Nothing -> pure Nothing

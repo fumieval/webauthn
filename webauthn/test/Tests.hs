@@ -21,7 +21,7 @@ import Test.Tasty ( defaultMain, testGroup, TestTree )
 import Test.Tasty.HUnit (assertEqual,  assertBool, testCaseSteps )
 import URI.ByteString ()
 import WebAuthn
-import WebAuthn.Types (SignCount(..), AuthenticatorAssertionResponse(..), PublicKeyCredentialType(..), PubKeyCredAlg(..), Base64UrlByteString(..), AuthenticatorTransport(..), PublicKeyCredentialDescriptor(..))
+import WebAuthn.Types
 import qualified Data.ByteString.Lazy as BL
 
 main :: IO ()
@@ -156,7 +156,7 @@ registrationTest = testCaseSteps "Credentials Test" $ \step -> do
         { rp = defRp
         , challenge = Challenge "12343434"
         , user = User (Base64UrlByteString "id") "display name"
-        , pubKeyCredParams = ES256 :| []
+        , pubKeyCredParams = PublicKeyCredentialParameters PublicKey ES256 :| []
         , timeout = Nothing
         , attestation = Nothing
         , authenticatorSelection = Nothing
