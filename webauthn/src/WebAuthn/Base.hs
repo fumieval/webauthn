@@ -61,7 +61,7 @@ instance ToJSON AAGUID where
 
 -- | A probabilistically-unique byte sequence identifying a public key credential source and its authentication assertions.
 newtype CredentialId = CredentialId { unCredentialId :: ByteString }
-  deriving (Eq, Generic, Hashable, CBOR.Serialise)
+  deriving (Eq, Ord, Generic, Hashable, CBOR.Serialise)
   deriving (FromJSON, ToJSON, Show, IsString) via Base64UrlByteString
 
 -- | credential public key encoded in COSE_Key format

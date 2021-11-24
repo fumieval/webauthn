@@ -333,8 +333,8 @@ data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
   , attestationObject :: ByteString
   -- , transports :: [AuthenticatorTransport] -- TODO: should be a set?
   --, authenticatorData - omitted, stored inside attestationObject
-  --, publicKey 
-  --, publicKeyAlgorithm 
+  --, publicKey
+  --, publicKeyAlgorithm
   }
 
 instance FromJSON AuthenticatorAttestationResponse where
@@ -396,7 +396,7 @@ instance ToJSON AuthenticatorSelection where
 -- | https://www.w3.org/TR/webauthn-1/#sctn-rp-credential-params
 newtype PublicKeyCredentialRpEntity = PublicKeyCredentialRpEntity { id :: Text }
   deriving (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving newtype (FromJSON, ToJSON)
   deriving newtype IsString
 
 originToRelyingParty :: Origin -> PublicKeyCredentialRpEntity

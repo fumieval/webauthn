@@ -40,6 +40,8 @@ module WebAuthn (
   , VerifyRegistrationArgs(..)
   , verifyRegistration
   , defaultVerifyRegistrationArgs
+  , AttestationStatement(..)
+  , SignCount(..)
   , PublicKeyCredentialCreationOptions(..)
   , defaultPublicKeyCredentialCreationOptions
   , PublicKeyCredentialRequestOptions(..)
@@ -267,7 +269,7 @@ verifyAssertion
 verifyAssertion VerifyAssertionArgs{..} = do
   -- 1. Let options be a new PublicKeyCredentialRequestOptions structure configured to the Relying Party's needs for the ceremony.
   -- options passed as argument
-  -- 
+  --
   -- 2. Call navigator.credentials.get() and pass options as the publicKey option. Let credential be the result...
   -- credential passed as argument
   --

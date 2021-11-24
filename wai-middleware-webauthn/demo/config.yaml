@@ -1,10 +1,13 @@
-origin: "https://localhost:8080"
+rpId: localhost
 endpoint: "webauthn"
 handler:
   fumi3:
   - aaguid: '00000000000000000000000000000000'
     credentialId: GKUYBIYJlF0cYpMRB31QXdACqN-vj_aW2cGdAXFPQ0NnFl27jFVlCKQ8GA4tVUt2K5Q9D2Qu0fW0EEUcsF-LCA==
     credentialPublicKey: pQECAyYgASFYIADyoIRl6IlLxC0lsh4T0LYAGFkW_r9gccOYbbHa3uXBIlggC8C7oYqVXzE30ALslSqajLu11NCn8GNAduBK6Qj0PqQ=
+  fumieval:
+  - aaguid: '6028b017b1d44c02b4b3afcdafc96bb2'
+    credentialId: A0k9c810s1n60KLOoj-oUuLMoAinXSiKcqFPN0GI1tQ=
+    credentialPublicKey: pAEDAzkBACBZAQC3kFvaoYDszw6mSY7msjRX6zRSYAuuToQ8nDhWlUOXOMFYOJk0L-GM1R4xXcyDYMUnUu3c-h_VASFoWuIvNyf5zWdOFjgcwDSEdgrRY_HdnqFCKuBPir3a_0JC0Pt27COtWE1UN2rfXV5fooUhc7XOOvlYklGrUtGuEKeCFwulr2U3-fF_ORZLrnGX01u5xL1FPbmnAezs1SRaHj1EQsZD9_6hKblgFcZ6PR_Myt0Sr09JSzr6TD4g-h75aRC7epKuq-7T3Sj_-qY_tN7N3OcGYkfoC4xbfVtlAHXptnii_zaMsm04PxPpIym9EJIJNsauBbEl_NjlE1jxAs6-WVAFIUMBAAE=
 
-timeout: 86400
 certStore: "demo/cacert.pem"

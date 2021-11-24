@@ -14,20 +14,33 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Yaml as Yaml
 import qualified Data.Aeson as J
 import Paths_demo
+import System.Environment
 
 main :: IO ()
 main = do
   config <- getDataFileName "config.yaml" >>= Yaml.decodeFileThrow
-  mid <- WebAuthn.mkMiddleware $ WebAuthn.staticKeys <$> config
+
+  -- Initialise the authorisation logic. Creates a function that updates the handler
+  (setHandler, authorisation) <- WebAuthn.volatileTokenAuthorisation putStrLn 60
+
+  authentication <- WebAuthn.mkMiddleware $ setHandler . WebAuthn.staticKeys <$> config
+
+  -- Combine the authentication middleware and the authorization middleware
+  let middleware = authentication . authorisation
+
   path <- getDataFileName "index.html"
+  -- dead simple application which returns the user name
+  let application req sendResp = case pathInfo req of
+        [] -> sendResp $ responseFile status200 [] path Nothing
+        ["api"] -> case WebAuthn.requestIdentifier req of
+          Nothing -> sendResp $ responseLBS status401 [] "Authorisation required"
+          Just name -> sendResp $ responseLBS status200 [] $ J.encode name
+        _ -> sendResp $ responseLBS status404 [] "Not found"
+
   pathCert <- getDataFileName "certificate.pem"
   pathKey <- getDataFileName "key.pem"
-  putStrLn $ "Listening on " <> show config.origin
-  let cfg = maybe id setPort config.origin.port defaultSettings
+  port <- maybe 8080 read <$> lookupEnv "PORT"
+  putStrLn $ "Listening on port " <> show port
+  let cfg = setPort port defaultSettings
   runTLS (tlsSettings pathCert pathKey) cfg { settingsHTTP2Enabled = False }
-    $ mid $ \req sendResp -> case pathInfo req of
-      [] -> sendResp $ responseFile status200 [] path Nothing
-      ["api"] -> case WebAuthn.requestIdentifier req of
-        Nothing -> sendResp $ responseLBS status401 [] "Authorisation required"
-        Just name -> sendResp $ responseLBS status200 [] $ J.encode name
-      _ -> sendResp $ responseLBS status404 [] "Not found"
+    $ middleware application

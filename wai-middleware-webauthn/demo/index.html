@@ -77,7 +77,7 @@
           displayName: name,
           name: name
           };
-        auth.register(user).then(result => {
+        auth.register(user).then(resp => resp.json()).then(result => {
           var div = document.createElement("section");
           div.innerHTML = "Add the following pair to config.yaml and restart: <pre><code>"
             + user.displayName + ":"
@@ -97,6 +97,7 @@
             return;
           }
           auth.verify(creds[0].credentialId)
+            .then(resp => resp.text())
             .then(function(token){
               var div = document.createElement("section");
               div.innerText = "Your token: " + token;
@@ -106,18 +107,12 @@
       );
     document.getElementById("run").addEventListener("click"
       , function(e){
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function()
-        {
-          if (xhr.readyState === XMLHttpRequest.DONE) {
-            var div = document.createElement("section");
-            div.innerText = xhr.status + " " + xhr.responseText;
+        fetch("/api", { headers: { Authorization: currentToken }})
+        .then(resp => resp.text().then(body => {
+          var div = document.createElement("section");
+            div.innerText = resp.status + " " + body;
             document.getElementById("webauthn-result").appendChild(div);
-          }
-        };
-        xhr.open("GET", "/api", true);
-        xhr.setRequestHeader("Authorization", currentToken);
-        xhr.send();
+        }));
       });
   </script>
 </body>

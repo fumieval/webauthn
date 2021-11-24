@@ -4,21 +4,21 @@ function WebAuthnProxy(hostName, endpoint){
       .replace(/-/g, '+')
       .replace(/_/g, '/')
   }
-  
+
   function escape (str) {
     return str.replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '')
   }
-  
+
   base64 = {
     encode: function(str, encoding) {
       return escape(buffer.Buffer.from(str, encoding || 'utf8').toString('base64'))
     },
     decode: function(str, encoding) {
       return buffer.Buffer.from(unescape(str), 'base64').buffer
-    }    
-  }  
+    }
+  }
   result = {};
 
   result.register = user => new Promise(function(resolve, reject){
@@ -55,9 +55,9 @@ function WebAuthnProxy(hostName, endpoint){
                 transports: cred.response.transports
               },
             })
-          }).then(resp => resp.json()).then(resolve).catch(reject);
+          }).then(resolve).catch(reject);
         })
-        .catch((err) => reject(err));
+        .catch(reject);
     })});
 
   result.lookup = name => fetch(endpoint + "/lookup/" + name).then(resp => resp.json());
@@ -91,7 +91,7 @@ function WebAuthnProxy(hostName, endpoint){
                 }
               , challenge: challenge
               })
-          }).then(resp => resp.text()).then(resolve).catch(reject);
+          }).then(resolve).catch(reject);
         })
         .catch(reject);
     })});
