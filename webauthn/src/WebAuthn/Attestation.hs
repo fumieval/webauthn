@@ -59,7 +59,7 @@ data AttestationStatement
 verifyCollectedClientData :: PublicKeyCredentialRpEntity -> Challenge -> Maybe Text -> CollectedClientData -> Either VerificationFailure ()
 verifyCollectedClientData rpOrigin rpChallenge rpTokenBinding CollectedClientData{..} = do
   -- 7.
-  unless (_type == WebAuthnCreate) $ Left InvalidType
+  unless (typ == WebAuthnCreate) $ Left InvalidType
   -- 8.
   unless (challenge == rpChallenge) $ Left $ MismatchedChallenge rpChallenge challenge
   -- 9.

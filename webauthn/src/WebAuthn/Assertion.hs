@@ -28,7 +28,7 @@ verifyCollectedClientData
   -> Maybe Text -- ^ Token Binding
   -> CollectedClientData -- ^ parsed clientDataJSON
   -> Either VerificationFailure ()
-verifyCollectedClientData rpOrigin rpChallenge tbi CollectedClientData{ _type = clientType, challenge = clientChallenge, origin = clientOrigin, tokenBinding = clientTokenBinding } = do
+verifyCollectedClientData rpOrigin rpChallenge tbi CollectedClientData{ typ = clientType, challenge = clientChallenge, origin = clientOrigin, tokenBinding = clientTokenBinding } = do
   unless (clientType == WebAuthnGet) $ Left InvalidType
   unless (clientChallenge == rpChallenge) $ Left $ MismatchedChallenge rpChallenge clientChallenge
   unless (isRegistrableDomainSuffixOfOrIsEqualTo rpOrigin clientOrigin) $ Left $ MismatchedOrigin rpOrigin clientOrigin

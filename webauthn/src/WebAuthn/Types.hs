@@ -20,14 +20,12 @@ module WebAuthn.Types
   , AuthenticatorData(..)
   , AuthenticatorSelection (..)
   , AuthenticatorTransport(..)
-  , AuthnSel(..)
   , Base64UrlByteString(..)
-  , BiometricPerfBounds(..)
   , Challenge(..)
   , CollectedClientData(..)
   , CredentialId(..)
   , CredentialPublicKey(..)
-  , Extensions (..)
+  , Extensions
   , COSEAlgorithmIdentifier (..), pubKeyCredAlgFromInt32
   , PublicKeyCredential(..)
   , PublicKeyCredentialCreationOptions(..), defaultPublicKeyCredentialCreationOptions
@@ -70,7 +68,7 @@ import Control.Monad.Fail ( MonadFail(fail) )
 import Crypto.Hash ( SHA256, Digest )
 import Data.Aeson (SumEncoding(UntaggedValue))
 import Data.ByteString (ByteString)
-import Data.Char ( toLower, toUpper )
+import Data.Char ( toLower )
 import Data.List (isSuffixOf)
 import Data.List.NonEmpty as NE
 import Data.Int (Int32)
@@ -81,7 +79,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as T
 import Data.Word (Word32)
-import Deriving.Aeson
+import Data.Void
+import GHC.Generics (Generic)
 import GHC.Records
 import WebAuthn.Base
 
@@ -153,7 +152,7 @@ pubKeyCredAlgFromInt32 = \case
 
 -- | 5.8.1. Client Data Used in WebAuthn Signatures (dictionary CollectedClientData)
 data CollectedClientData = CollectedClientData
-  { _type :: WebAuthnType
+  { typ :: WebAuthnType
   , challenge :: Challenge
   , origin :: Origin
   , tokenBinding :: Maybe TokenBinding
@@ -343,33 +342,7 @@ instance ToJSON PublicKeyCredentialDescriptor where
     where
       mtransports = maybe [] (\x -> [ "transports" .= toJSON x ]) transports
 
-newtype AuthnSel = AuthnSel [Base64UrlByteString] deriving (Show, Eq, Generic)
-
-instance ToJSON AuthnSel where
-  toEncoding = J.genericToEncoding defaultOptions { unwrapUnaryRecords = True }
-  toJSON = J.genericToJSON defaultOptions { unwrapUnaryRecords = True }
-
-data BiometricPerfBounds = BiometricPerfBounds
-  { far :: Double
-  , frr :: Double
-  } deriving stock (Show, Eq, Generic)
-
-instance ToJSON BiometricPerfBounds where
-  toEncoding = J.genericToEncoding defaultOptions { fieldLabelModifier = fmap toUpper }
-  toJSON = J.genericToJSON defaultOptions { fieldLabelModifier = fmap toUpper }
-
-data Extensions = Extensions
-  { uvi :: Bool
-  , loc :: Bool
-  , uvm :: Bool
-  , exts :: Bool
-  , authnSel :: Maybe AuthnSel
-  , biometricPerfBounds :: Maybe BiometricPerfBounds
-  } deriving stock (Show, Eq, Generic)
-
-instance ToJSON Extensions where
-  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
-  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
+type Extensions = Void
 
 data AuthenticatorSelection = AuthenticatorSelection {
   authenticatorAttachment :: Maybe AuthenticatorAttachment
@@ -440,8 +413,10 @@ data PublicKeyCredentialCreationOptions t = PublicKeyCredentialCreationOptions
 
 deriving instance Show (PublicKeyCredentialCreationOptions Complete)
 deriving instance Eq (PublicKeyCredentialCreationOptions Complete)
-deriving via CustomJSON '[OmitNothingFields] (PublicKeyCredentialCreationOptions t)
-  instance t ~ Complete => ToJSON (PublicKeyCredentialCreationOptions t)
+
+instance t ~ Complete => ToJSON (PublicKeyCredentialCreationOptions t) where
+  toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
+  toJSON = genericToJSON defaultOptions { omitNothingFields = True }
 
 defaultPublicKeyCredentialCreationOptions
   :: PublicKeyCredentialCreationOptions Incomplete
