@@ -146,9 +146,9 @@ mkMiddleware Config{..} = do
         
         liftIO $ do
           rg <- W.verifyRegistration
-            defaultVerifyRegistrationArgs
+            def
               { certificateStore
-              , options = defaultPublicKeyCredentialCreationOptions
+              , options = def
                 { rp = originToRelyingParty origin
                 , challenge = challenge
                 , user
@@ -166,8 +166,8 @@ mkMiddleware Config{..} = do
         (name, pub) <- ContT $ \k -> findPublicKey handler credential.id
           >>= maybe (sendResp unauthorised) k
         
-        ContT $ \k -> case verifyAssertion defaultVerifyAssertionArgs
-          { options = defaultPublicKeyCredentialRequestOptions { challenge }
+        ContT $ \k -> case verifyAssertion def
+          { options = def { challenge }
           , relyingParty = originToRelyingParty origin
           , credential
           , credentialPublicKey = pub

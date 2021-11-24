@@ -81,6 +81,7 @@ import Data.Text qualified as T
 import Data.Text.Read qualified as T
 import Data.Word (Word32)
 import Data.Void
+import Data.Default.Class
 import GHC.Generics (Generic)
 import GHC.Records
 import WebAuthn.Base
@@ -131,6 +132,9 @@ data PublicKeyCredentialRequestOptions t = PublicKeyCredentialRequestOptions
 
 deriving instance Eq (PublicKeyCredentialRequestOptions Complete)
 deriving instance Show (PublicKeyCredentialRequestOptions Complete)
+
+instance t ~ Incomplete => Default (PublicKeyCredentialRequestOptions t) where
+  def = defaultPublicKeyCredentialRequestOptions
 
 defaultPublicKeyCredentialRequestOptions :: PublicKeyCredentialRequestOptions Incomplete
 defaultPublicKeyCredentialRequestOptions = PublicKeyCredentialRequestOptions
@@ -452,6 +456,9 @@ deriving instance Eq (PublicKeyCredentialCreationOptions Complete)
 instance t ~ Complete => ToJSON (PublicKeyCredentialCreationOptions t) where
   toEncoding = genericToEncoding defaultOptions { omitNothingFields = True }
   toJSON = genericToJSON defaultOptions { omitNothingFields = True }
+
+instance t ~ Incomplete => Default (PublicKeyCredentialCreationOptions t) where
+  def = defaultPublicKeyCredentialCreationOptions
 
 defaultPublicKeyCredentialCreationOptions
   :: PublicKeyCredentialCreationOptions Incomplete

@@ -50,6 +50,7 @@ module WebAuthn (
   , VerifyAssertionArgs(..)
   , defaultVerifyAssertionArgs
   , verifyAssertion
+  , Default(..)
   ) where
 
 import Control.Monad (when, unless)
@@ -61,6 +62,7 @@ import Data.Aeson as AE
 import Data.Bifunctor (first)
 import Data.ByteArray qualified as BA
 import Data.ByteString.Lazy qualified as BL
+import Data.Default.Class
 import Data.Hourglass (DateTime)
 import qualified Data.Text as T
 import Data.Text (Text)
@@ -99,6 +101,9 @@ defaultVerifyRegistrationArgs = VerifyRegistrationArgs
   , now = Nothing
   , tokenBindingID = Nothing
   }
+
+instance t ~ Incomplete => Default (VerifyRegistrationArgs t) where
+  def = defaultVerifyRegistrationArgs
 
 instance t ~ Complete => HasField "run" (VerifyRegistrationArgs t) (IO (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))) where
   getField = verifyRegistration
@@ -217,6 +222,9 @@ defaultVerifyAssertionArgs = VerifyAssertionArgs
   , requireVerification = False
   , storedSignCount = 0
   }
+
+instance t ~ Incomplete => Default (VerifyAssertionArgs t) where
+  def = defaultVerifyAssertionArgs
 
 instance t ~ Complete => HasField "run" (VerifyAssertionArgs t) (Either VerificationFailure (Maybe SignCount)) where
   getField = verifyAssertion
