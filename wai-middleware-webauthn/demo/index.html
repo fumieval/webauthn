@@ -64,7 +64,7 @@
   <div>
     <button id="run">GET /api</button>
   <script>
-    var auth = WebAuthnProxy("localhost", "webauthn");
+    const auth = WebAuthnProxy("localhost", "webauthn");
     var idInput = document.getElementById('webauthn-id');
     var currentToken = null;
     document.getElementById("webauthn-register").addEventListener("click"
@@ -77,7 +77,7 @@
           displayName: name,
           name: name
           };
-        auth.register(user).then(resp => resp.json()).then(result => {
+        auth.attest(user).then(resp => resp.json()).then(result => {
           var div = document.createElement("section");
           div.innerHTML = "Add the following pair to config.yaml and restart: <pre><code>"
             + user.displayName + ":"
@@ -96,7 +96,7 @@
             div.innerText = "No credential found";
             return;
           }
-          auth.verify(creds[0].credentialId)
+          auth.assert(creds[0].credentialId)
             .then(resp => resp.text())
             .then(function(token){
               var div = document.createElement("section");

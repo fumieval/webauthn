@@ -21,7 +21,7 @@ function WebAuthnProxy(hostName, endpoint){
   }
   result = {};
 
-  result.register = user => new Promise(function(resolve, reject){
+  result.attest = user => new Promise(function(resolve, reject){
     fetch(endpoint + "/challenge")
     .then(resp => resp.json())
     .then(function(challenge){
@@ -41,7 +41,7 @@ function WebAuthnProxy(hostName, endpoint){
           , attestation: "direct"};
       navigator.credentials.create({publicKey: info})
         .then((cred) => {
-          fetch(endpoint + "/register", {
+          fetch(endpoint + "/attest", {
             method: 'POST',
             body: JSON.stringify({
               challenge: challenge,
@@ -62,7 +62,7 @@ function WebAuthnProxy(hostName, endpoint){
 
   result.lookup = name => fetch(endpoint + "/lookup/" + name).then(resp => resp.json());
 
-  result.verify = credStr => new Promise(function(resolve, reject){
+  result.assert = credStr => new Promise(function(resolve, reject){
     fetch(endpoint + "/challenge")
     .then(response => response.json())
     .then(function(challenge){
@@ -75,7 +75,7 @@ function WebAuthnProxy(hostName, endpoint){
         , timeout: 60000
         }})
         .then((cred) => {
-          fetch(endpoint + "/verify", {
+          fetch(endpoint + "/assert", {
             method: "POST",
             body: JSON.stringify(
               { credential:

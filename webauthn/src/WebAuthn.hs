@@ -37,9 +37,9 @@ module WebAuthn (
   , originToRelyingParty
   -- * verfication
   , VerificationFailure(..)
-  , VerifyRegistrationArgs(..)
-  , verifyRegistration
-  , defaultVerifyRegistrationArgs
+  , VerifyAttestationArgs(..)
+  , verifyAttestation
+  , defaultVerifyAttestationArgs
   , AttestationStatement(..)
   , SignCount(..)
   , PublicKeyCredentialCreationOptions(..)
@@ -87,7 +87,7 @@ import WebAuthn.Types
 generateChallenge :: Int -> IO Challenge
 generateChallenge len = Challenge <$> getRandomBytes len
 
-data VerifyRegistrationArgs t = VerifyRegistrationArgs
+data VerifyAttestationArgs t = VerifyAttestationArgs
   { certificateStore :: X509.CertificateStore
   , options :: PublicKeyCredentialCreationOptions t
   , response :: Required t AuthenticatorAttestationResponse
@@ -95,8 +95,8 @@ data VerifyRegistrationArgs t = VerifyRegistrationArgs
   , tokenBindingID :: Maybe Text
   }
 
-defaultVerifyRegistrationArgs :: VerifyRegistrationArgs Incomplete
-defaultVerifyRegistrationArgs = VerifyRegistrationArgs
+defaultVerifyAttestationArgs :: VerifyAttestationArgs Incomplete
+defaultVerifyAttestationArgs = VerifyAttestationArgs
   { certificateStore = mempty
   , options = defaultPublicKeyCredentialCreationOptions
   , response = ()
@@ -104,15 +104,15 @@ defaultVerifyRegistrationArgs = VerifyRegistrationArgs
   , tokenBindingID = Nothing
   }
 
-instance t ~ Incomplete => Default (VerifyRegistrationArgs t) where
-  def = defaultVerifyRegistrationArgs
+instance t ~ Incomplete => Default (VerifyAttestationArgs t) where
+  def = defaultVerifyAttestationArgs
 
-instance t ~ Complete => HasField "run" (VerifyRegistrationArgs t) (IO (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))) where
-  getField = verifyRegistration
+instance t ~ Complete => HasField "run" (VerifyAttestationArgs t) (IO (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))) where
+  getField = verifyAttestation
 
 -- | 7.1. Registering a New Credential (Attestation)
 --
--- Registration ceremony (partial, read carefully).
+-- Attestation ceremony (partial, read carefully).
 --
 -- Following steps of the algorithm described in 7.1 are NOT implemented here and are out of scope
 -- for this library:
@@ -127,10 +127,10 @@ instance t ~ Complete => HasField "run" (VerifyRegistrationArgs t) (IO (Either V
 --
 -- 21. ...
 --
--- 22. Check that the credentialId is not yet registered to any other user. If registration is requested
+-- 22. Check that the credentialId is not yet registered to any other user. If Attestation is requested
 --     for a credential that is already registered to a different user, the Relying Party SHOULD fail this
---     registration ceremony, or it MAY decide to accept the registration, e.g. while deleting the older
---     registration.
+--     Attestation ceremony, or it MAY decide to accept the Attestation, e.g. while deleting the older
+--     Attestation.
 --
 -- 23. If the attestation statement attStmt verified successfully and is found to be trustworthy, then
 --     register the new credential with the account that was denoted in options.user:
@@ -150,14 +150,14 @@ instance t ~ Complete => HasField "run" (VerifyRegistrationArgs t) (IO (Either V
 --         suitable authenticator.
 --
 -- 24. If the attestation statement attStmt successfully verified but is not trustworthy per step 21
---     above, the Relying Party SHOULD fail the registration ceremony.
+--     above, the Relying Party SHOULD fail the Attestation ceremony.
 --
 -- TODO: This seems to need IO only because of AndroidSafetyNet.verify. Can we make it pure?
 --
-verifyRegistration :: MonadIO m
-  => VerifyRegistrationArgs Complete
+verifyAttestation :: MonadIO m
+  => VerifyAttestationArgs Complete
   -> m (Either VerificationFailure (AttestedCredentialData, AttestationStatement, SignCount))
-verifyRegistration VerifyRegistrationArgs{..} = runExceptT $ do
+verifyAttestation VerifyAttestationArgs{..} = runExceptT $ do
   let PublicKeyCredentialCreationOptions{..} = options
   -- 1. Let options be a new PublicKeyCredentialCreationOptions structure configured to the Relying Party's needs for the ceremony.
   -- options passed as argument

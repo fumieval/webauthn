@@ -72,10 +72,10 @@ User = -- Information stored in the authenticator
   }
 
 WebAuthnProxy : HostName -> Endpoint ->
-  { register : User -> Promise Credential
+  { attest : User -> Promise Credential
   -- Register a user to the authenticator and returns a credential if it's valid.
   -- Once verified, insert the Credential to the list of authorisedKeys into the configuraion.
-  , verify : CredentialId -> Promise Token
+  , assert : CredentialId -> Promise Token
   -- Verify a credential using the public key stored in the server.
   -- Returns a token if succeeds.
   , lookup : Identifier -> Promise CredentialId

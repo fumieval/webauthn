@@ -92,20 +92,20 @@ headers = [("Access-Control-Allow-Origin", "*")]
 responseJSON :: J.ToJSON a => a -> Response
 responseJSON val = responseLBS status200 ((hContentType, "application/json") : headers) $ J.encode val
 
-data RegisterRequest = RegisterRequest
+data AttestationRequest = AttestationRequest
   { response :: AuthenticatorAttestationResponse
   , challenge :: Challenge
   , user :: User
   }
   deriving Generic
-instance J.FromJSON RegisterRequest
+instance J.FromJSON AttestationRequest
 
-data VerifyRequest = VerifyRequest
+data AssertionRequest = AssertionRequest
   { credential :: PublicKeyCredential AuthenticatorAssertionResponse
   , challenge :: Challenge
   }
   deriving Generic
-instance J.FromJSON VerifyRequest
+instance J.FromJSON AssertionRequest
 
 jsonBody :: J.FromJSON a => (Response -> IO ResponseReceived) -> Request -> ContT ResponseReceived IO a
 jsonBody sendResp req = do
@@ -174,11 +174,11 @@ mkMiddleware Config{..} = do
         sendResp $ responseJSON challenge
       ["lookup", name] -> findCredentials handler (Identifier name)
         >>= sendResp . responseJSON
-      ["register"] -> evalContT $ do
-        RegisterRequest{..} <- jsonBody sendResp req
+      ["attest"] -> evalContT $ do
+        AttestationRequest{..} <- jsonBody sendResp req
 
         liftIO $ do
-          rg <- W.verifyRegistration
+          rg <- W.verifyAttestation
             def
               { certificateStore
               , options = def
@@ -192,8 +192,8 @@ mkMiddleware Config{..} = do
           case rg of
             Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
             Right (cd, st, count) -> onAttestation handler user cd st count >>= sendResp
-      ["verify"] -> evalContT $ do
-        VerifyRequest{..} <- jsonBody sendResp req
+      ["assert"] -> evalContT $ do
+        AssertionRequest{..} <- jsonBody sendResp req
         (name, pub) <- ContT $ \k -> findPublicKey handler credential.id
           >>= maybe (sendResp unauthorised) k
 

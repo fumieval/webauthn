@@ -109,7 +109,7 @@ genericCredentialTest :: String -> TestPublicKeyCredential -> Maybe DateTime -> 
 genericCredentialTest name TestPublicKeyCredential{..} now = testCaseSteps name $ \step -> do
   step "Registeration check..."
   Just certificateStore <- readCertificateStore "test/cacert.pem"
-  eth <- VerifyRegistrationArgs
+  eth <- VerifyAttestationArgs
       { options = defaultPublicKeyCredentialCreationOptions
         { rp = defRp
         , challenge
