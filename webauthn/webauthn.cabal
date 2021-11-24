@@ -21,27 +21,37 @@ common base-common
     , x509-store        >=1.6  && <1.7
     , hourglass         ^>= 0.2
   default-language:   Haskell2010
+  default-extensions:
+      LambdaCase
+    , DerivingStrategies
+    , DuplicateRecordFields
+    , NamedFieldPuns
+    , OverloadedStrings
+    , RecordWildCards
+    , ScopedTypeVariables
 
 library
   import:             base-common
   hs-source-dirs:     src
   exposed-modules:
     WebAuthn
+    WebAuthn.AuthenticatorData
+    WebAuthn.Assertion
+    WebAuthn.Attestation
     WebAuthn.Base
+    WebAuthn.Common
     WebAuthn.Attestation.Statement.AndroidSafetyNet
     WebAuthn.Attestation.Statement.FIDOU2F
     WebAuthn.Attestation.Statement.Packed
     WebAuthn.Attestation.Statement.TPM
     WebAuthn.Signature
     WebAuthn.Types
-
   build-depends:
     , asn1-encoding     >=0.9  && <0.10
     , asn1-types        >=0.3  && <0.4
-    , base16-bytestring >=1.0  && <1.1
+    , base16-bytestring >=0.1.1.7  && <1.3
     , cborg             >=0.2  && <0.3
     , cereal            >=0.5  && <0.6
-    , deriving-aeson    ^>= 0.2
     , containers        >=0.6  && <0.7
     , cryptonite        >=0.29 && <0.30
     , hashable          >=1.3  && <1.4
@@ -51,6 +61,7 @@ library
     , transformers      >=0.5  && <0.6
     , x509              >=1.7  && <1.8
     , x509-validation   >=1.6  && <1.7
+    , data-default-class
 
   ghc-options:        -Wall -Wcompat
   default-extensions:
@@ -65,10 +76,9 @@ test-suite test-webauthn
   type:               exitcode-stdio-1.0
   hs-source-dirs:     test
   main-is:            Tests.hs
-
   build-depends:
     , interpolate    >=0.2  && <0.3
-    , tasty          >=1.4  && <1.5
+    , tasty          >=1.2  && <1.5
     , tasty-hunit    >=0.10 && <0.11
     , uri-bytestring >=0.3  && <0.4
     , webauthn

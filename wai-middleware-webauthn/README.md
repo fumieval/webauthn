@@ -48,8 +48,7 @@ This middleware exposes a JavaScript library in `/lib.js`:
 You must import following scripts in order to make it work:
 
 ```
-<script src="https://cdn.jsdelivr.net/npm/cbor-js@0.1.0/cbor.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/base64-js@1.3.0/base64js.min.js"></script>
+<script src="https://bundle.run/buffer@6.0.3"></script>
 ```
 
 Here's the pseudo-code describing the content of the library.
@@ -69,15 +68,14 @@ HostName = String
 Endpoint = String -- The prefix of the middleware API e.g. "webauthn"
 User = -- Information stored in the authenticator
   { id : String
-  , name : String
   , displayName : String
   }
 
 WebAuthnProxy : HostName -> Endpoint ->
-  { register : User -> Promise Credential
+  { attest : User -> Promise Credential
   -- Register a user to the authenticator and returns a credential if it's valid.
   -- Once verified, insert the Credential to the list of authorisedKeys into the configuraion.
-  , verify : CredentialId -> Promise Token
+  , assert : CredentialId -> Promise Token
   -- Verify a credential using the public key stored in the server.
   -- Returns a token if succeeds.
   , lookup : Identifier -> Promise CredentialId

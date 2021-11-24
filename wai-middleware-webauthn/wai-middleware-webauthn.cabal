@@ -32,7 +32,8 @@ library
     , http-types
     , serialise
     , text
-    , unordered-containers
+    , transformers
+    , containers
     , wai
     , webauthn
     , x509-store
