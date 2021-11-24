@@ -4,6 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Network.Wai.Middleware.WebAuthn
@@ -20,6 +21,8 @@ module Network.Wai.Middleware.WebAuthn
 
 import Control.Concurrent
 import Control.Monad (forever)
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Cont
 import Crypto.Random (getRandomBytes)
 import WebAuthn as W
 import qualified Data.Aeson as J
@@ -35,7 +38,6 @@ import GHC.Generics (Generic)
 import GHC.Clock
 import Network.HTTP.Types
 import Paths_wai_middleware_webauthn
-import qualified Codec.Serialise as CBOR
 import qualified Data.X509.CertificateStore as X509
 
 newtype Identifier = Identifier { unIdentifier :: Text }
@@ -88,6 +90,28 @@ headers = [("Access-Control-Allow-Origin", "*")]
 responseJSON :: J.ToJSON a => a -> Response
 responseJSON val = responseLBS status200 ((hContentType, "application/json") : headers) $ J.encode val
 
+data RegisterRequest = RegisterRequest
+  { response :: AuthenticatorAttestationResponse
+  , challenge :: Challenge
+  , user :: User
+  }
+  deriving Generic
+instance J.FromJSON RegisterRequest
+
+data VerifyRequest = VerifyRequest
+  { credential :: PublicKeyCredential AuthenticatorAssertionResponse
+  , challenge :: Challenge
+  }
+  deriving Generic
+instance J.FromJSON VerifyRequest
+
+jsonBody :: J.FromJSON a => (Response -> IO ResponseReceived) -> Request -> ContT ResponseReceived IO a
+jsonBody sendResp req = do
+  body <- liftIO $ lazyRequestBody req
+  ContT $ \k -> case J.eitherDecode body of
+    Left err -> sendResp $ responseBuilder status400 headers $ fromString err
+    Right a -> k a
+
 -- | Create a web authentication middleware.
 --
 -- * @GET /webauthn/lib.js@ returns a JavaScript library containing helper functions.
@@ -117,49 +141,47 @@ mkMiddleware Config{..} = do
         sendResp $ responseJSON challenge
       ["lookup", name] -> findCredentials handler (Identifier name)
         >>= sendResp . responseJSON
-      ["register"] -> do
-        body <- lazyRequestBody req
-        let (user, clientDataJSON, attestationObject, challenge) = CBOR.deserialise body
-
-        rg <- W.registerCredential
-          defaultRegisterCredentialArgs
-            { certificateStore
-            , options = defaultCredentialCreationOptions
-              { rp = originToRelyingParty origin
-              , challenge
-              , user
+      ["register"] -> evalContT $ do
+        RegisterRequest{..} <- jsonBody sendResp req
+        
+        liftIO $ do
+          rg <- W.verifyRegistration
+            defaultVerifyRegistrationArgs
+              { certificateStore
+              , options = defaultPublicKeyCredentialCreationOptions
+                { rp = originToRelyingParty origin
+                , challenge = challenge
+                , user
+                }
+              , response
               }
-            , clientDataJSON
-            , attestationObject
-            }
 
-        case rg of
-          Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
-          Right cd -> do
-            registerKey handler user cd
-            sendResp $ responseJSON cd
-      ["verify"] -> do
-        body <- lazyRequestBody req
-        let (cid, cdj, ad, sig, challenge) = CBOR.deserialise body
-        findPublicKey handler cid >>= \case
-          Just (name, pub) -> case verify VerifyArgs
-            { challenge = challenge
-            , relyingParty = originToRelyingParty origin
-            , tokenBindingID = Nothing
-            , requireVerification = False
-            , clientDataJSON = cdj
-            , authenticatorData = ad
-            , signature = sig
-            , credentialPublicKey = pub
-            } of
+          case rg of
             Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
-            Right _ -> do
-              tokenRaw <- getRandomBytes 16
-              let token = B.encode tokenRaw
-              now <- getMonotonicTime
-              atomicModifyIORef' vTokens $ \m -> (HM.insert token (name, now) m, ())
-              sendResp $ responseJSON $ T.decodeUtf8 token
-          Nothing -> sendResp unauthorised
+            Right (cd, _, _) -> do
+              registerKey handler user cd
+              sendResp $ responseJSON cd
+      ["verify"] -> evalContT $ do
+        VerifyRequest{..} <- jsonBody sendResp req
+        (name, pub) <- ContT $ \k -> findPublicKey handler credential.id
+          >>= maybe (sendResp unauthorised) k
+        
+        ContT $ \k -> case verifyAssertion defaultVerifyAssertionArgs
+          { options = defaultPublicKeyCredentialRequestOptions { challenge }
+          , relyingParty = originToRelyingParty origin
+          , credential
+          , credentialPublicKey = pub
+          } of
+          Left e -> sendResp $ responseBuilder status403 headers $ fromString $ show e
+          Right _ -> k ()
+
+        liftIO $ do
+          tokenRaw <- getRandomBytes 16
+          let token = B.encode tokenRaw
+          now <- getMonotonicTime
+          atomicModifyIORef' vTokens $ \m -> (HM.insert token (name, now) m, ())
+          sendResp $ responseJSON $ T.decodeUtf8 token
+
       _ -> sendResp $ responseBuilder status404 headers "Not Found"
     _ | (xs, (_, token) : ys) <- break ((=="Authorization") . fst) $ requestHeaders req -> do
       m <- readIORef vTokens

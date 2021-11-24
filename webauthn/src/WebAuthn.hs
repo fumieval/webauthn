@@ -43,9 +43,12 @@ module WebAuthn (
   , PublicKeyCredentialCreationOptions(..)
   , defaultPublicKeyCredentialCreationOptions
   , PublicKeyCredentialRequestOptions(..)
+  , defaultPublicKeyCredentialRequestOptions
   , PublicKeyCredential(..)
   , AuthenticatorAttestationResponse(..)
+  , AuthenticatorAssertionResponse(..)
   , VerifyAssertionArgs(..)
+  , defaultVerifyAssertionArgs
   , verifyAssertion
   ) where
 
@@ -57,7 +60,6 @@ import Crypto.Random
 import Data.Aeson as AE
 import Data.Bifunctor (first)
 import Data.ByteArray qualified as BA
-import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
 import Data.Hourglass (DateTime)
 import qualified Data.Text as T
@@ -84,8 +86,7 @@ generateChallenge len = Challenge <$> getRandomBytes len
 data VerifyRegistrationArgs t = VerifyRegistrationArgs
   { certificateStore :: X509.CertificateStore
   , options :: PublicKeyCredentialCreationOptions t
-  , clientDataJSON :: Required t ByteString
-  , attestationObject :: Required t ByteString
+  , response :: Required t AuthenticatorAttestationResponse
   , now :: Maybe DateTime
   , tokenBindingID :: Maybe Text
   }
@@ -94,8 +95,7 @@ defaultVerifyRegistrationArgs :: VerifyRegistrationArgs Incomplete
 defaultVerifyRegistrationArgs = VerifyRegistrationArgs
   { certificateStore = mempty
   , options = defaultPublicKeyCredentialCreationOptions
-  , clientDataJSON = ()
-  , attestationObject = ()
+  , response = ()
   , now = Nothing
   , tokenBindingID = Nothing
   }
@@ -166,12 +166,12 @@ verifyRegistration VerifyRegistrationArgs{..} = runExceptT $ do
   -- We currently do not support any extensions. Skip ahead.
   --
   -- 5. to 10.
-  c :: CollectedClientData <- except $ first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict clientDataJSON
+  c :: CollectedClientData <- except $ first JSONDecodeError $ AE.eitherDecode $ BL.fromStrict response.clientDataJSON
   except $ Attestation.verifyCollectedClientData rp challenge tokenBindingID c
   -- 11.
-  let hash = H.hash clientDataJSON :: H.Digest H.SHA256
+  let hash = H.hash response.clientDataJSON :: H.Digest H.SHA256
   -- 12.
-  (AttestationObject{ attStmt, authData }, authDataRaw) <- except $ Attestation.parseAttestationObject attestationObject
+  (AttestationObject{ attStmt, authData }, authDataRaw) <- except $ parseAttestationObject response.attestationObject
   -- 13.
   except $ unless (H.hash (encodeUtf8 rp.id) == authData.rpIdHash) $ Left MismatchedRPID
   -- 14.
@@ -197,18 +197,28 @@ verifyRegistration VerifyRegistrationArgs{..} = runExceptT $ do
     Nothing -> throwE $ MalformedAuthenticatorData "No attestedCredentialData"
     Just x -> pure (x, attStmt, authData.signCount)
 
-data VerifyAssertionArgs = VerifyAssertionArgs
-  { relyingParty :: PublicKeyCredentialRpEntity
-  , origin :: Origin
-  , options :: PublicKeyCredentialRequestOptions
-  , credential :: PublicKeyCredential AuthenticatorAssertionResponse
+data VerifyAssertionArgs t = VerifyAssertionArgs
+  { relyingParty :: Required t PublicKeyCredentialRpEntity
+  , options :: PublicKeyCredentialRequestOptions t
+  , credential :: Required t (PublicKeyCredential AuthenticatorAssertionResponse)
   , tokenBindingID :: Maybe Text
-  , credentialPublicKey :: CredentialPublicKey
+  , credentialPublicKey :: Required t CredentialPublicKey
   , requireVerification :: Bool
   , storedSignCount :: SignCount
   }
 
-instance HasField "run" VerifyAssertionArgs (Either VerificationFailure (Maybe SignCount)) where
+defaultVerifyAssertionArgs :: VerifyAssertionArgs Incomplete
+defaultVerifyAssertionArgs = VerifyAssertionArgs
+  { relyingParty = ()
+  , options = defaultPublicKeyCredentialRequestOptions
+  , credential = ()
+  , tokenBindingID = Nothing
+  , credentialPublicKey = ()
+  , requireVerification = False
+  , storedSignCount = 0
+  }
+
+instance t ~ Complete => HasField "run" (VerifyAssertionArgs t) (Either VerificationFailure (Maybe SignCount)) where
   getField = verifyAssertion
 
 -- | 7.2. Verifying an Authentication Assertion
@@ -244,7 +254,7 @@ instance HasField "run" VerifyAssertionArgs (Either VerificationFailure (Maybe S
 -- value that should be saved as the new storedSignCount.
 --
 verifyAssertion
-  :: VerifyAssertionArgs
+  :: VerifyAssertionArgs Complete
   -> Either VerificationFailure (Maybe SignCount)
 verifyAssertion VerifyAssertionArgs{..} = do
   -- 1. Let options be a new PublicKeyCredentialRequestOptions structure configured to the Relying Party's needs for the ceremony.

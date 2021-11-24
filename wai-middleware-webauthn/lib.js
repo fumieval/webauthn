@@ -1,47 +1,31 @@
 function WebAuthnProxy(hostName, endpoint){
+  function unescape (str) {
+    return (str + '==='.slice((str.length + 3) % 4))
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+  }
+  
+  function escape (str) {
+    return str.replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
+  }
+  
+  base64 = {
+    encode: function(str, encoding) {
+      return escape(buffer.Buffer.from(str, encoding || 'utf8').toString('base64'))
+    },
+    decode: function(str, encoding) {
+      return buffer.Buffer.from(unescape(str), 'base64').buffer
+    }    
+  }  
   result = {};
 
-  function getJSON(path)
-  {
-    return new Promise(function(resolve, reject){
-      var xhr = new XMLHttpRequest();
-      xhr.onreadystatechange = function()
-      {
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (xhr.status === 200) {
-            resolve(JSON.parse(xhr.responseText));
-          } else {
-            reject(xhr.responseText);
-          }
-        }
-      };
-      xhr.open("GET", path, true);
-      xhr.send();
-    });
-  }
-
-  function postJSON(path, body)
-  {
-    return new Promise(function(resolve, reject){
-      var xhr = new XMLHttpRequest();
-      xhr.onreadystatechange = function()
-      {
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (xhr.status === 200) {
-            resolve(JSON.parse(xhr.responseText));
-          } else {
-            reject(xhr.responseText);
-          }
-        }
-      };
-      xhr.open("POST", path, true);
-      xhr.send(body);
-    });
-  }
-
   result.register = user => new Promise(function(resolve, reject){
-    getJSON(endpoint + "/challenge").then(function(challenge){
-      let rawChallenge = base64js.toByteArray(challenge);
+    fetch(endpoint + "/challenge")
+    .then(resp => resp.json())
+    .then(function(challenge){
+      let rawChallenge = base64.decode(challenge);
       let info =
           { challenge: rawChallenge
           , user: user
@@ -57,22 +41,33 @@ function WebAuthnProxy(hostName, endpoint){
           , attestation: "direct"};
       navigator.credentials.create({publicKey: info})
         .then((cred) => {
-          postJSON(endpoint + "/register"
-            , CBOR.encode(
-                [ user
-                , new Uint8Array(cred.response.clientDataJSON)
-                , new Uint8Array(cred.response.attestationObject)
-                , new Uint8Array(rawChallenge)])).then(resolve).catch(reject);
+          fetch(endpoint + "/register", {
+            method: 'POST',
+            body: JSON.stringify({
+              challenge: challenge,
+              user: {
+                id: base64.encode(user.id),
+                displayName: user.displayName
+              },
+              response: {
+                attestationObject: base64.encode(cred.response.attestationObject),
+                clientDataJSON: base64.encode(cred.response.clientDataJSON),
+                transports: cred.response.transports
+              },
+            })
+          }).then(resp => resp.json()).then(resolve).catch(reject);
         })
         .catch((err) => reject(err));
     })});
 
-  result.lookup = name => getJSON(endpoint + "/lookup/" + name);
+  result.lookup = name => fetch(endpoint + "/lookup/" + name).then(resp => resp.json());
 
   result.verify = credStr => new Promise(function(resolve, reject){
-    getJSON(endpoint + "/challenge").then(function(challenge){
-      let rawChallenge = base64js.toByteArray(challenge);
-      let credId = base64js.toByteArray(credStr);
+    fetch(endpoint + "/challenge")
+    .then(response => response.json())
+    .then(function(challenge){
+      let rawChallenge = base64.decode(challenge);
+      let credId = base64.decode(credStr);
       navigator.credentials.get({publicKey:
         { challenge: rawChallenge
         , allowCredentials:
@@ -80,13 +75,23 @@ function WebAuthnProxy(hostName, endpoint){
         , timeout: 60000
         }})
         .then((cred) => {
-          postJSON(endpoint + "/verify"
-            , CBOR.encode(
-                [ credId
-                , new Uint8Array(cred.response.clientDataJSON)
-                , new Uint8Array(cred.response.authenticatorData)
-                , new Uint8Array(cred.response.signature)
-                , new Uint8Array(rawChallenge)])).then(resolve).catch(reject);
+          fetch(endpoint + "/verify", {
+            method: "POST",
+            body: JSON.stringify(
+              { credential:
+                {
+                  id: cred.id,
+                  rawId: base64.encode(cred.rawId),
+                  type: cred.type,
+                  response: {
+                    authenticatorData: base64.encode(cred.response.authenticatorData),
+                    clientDataJSON: base64.encode(cred.response.clientDataJSON),
+                    signature: base64.encode(cred.response.signature),
+                  }
+                }
+              , challenge: challenge
+              })
+          }).then(resp => resp.text()).then(resolve).catch(reject);
         })
         .catch(reject);
     })});

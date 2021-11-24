@@ -7,17 +7,18 @@ import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text.Encoding as TE
 
+import WebAuthn.Base
 import WebAuthn.Types
 
 -- | Check if credential.id is allowed by options.allowCredentials (7.2 step 5)
 verifyCredentialAllowed
-  :: PublicKeyCredentialRequestOptions
+  :: PublicKeyCredentialRequestOptions Complete
   -> PublicKeyCredential a
   -> Either VerificationFailure ()
 verifyCredentialAllowed options PublicKeyCredential{ id = pkid } =
   case options.allowCredentials of
     Just xs -> do
-      let notFound = null $ NE.filter (\PublicKeyCredentialDescriptor{ id = pkcdId } -> CredentialId (TE.encodeUtf8 pkid) == pkcdId) xs
+      let notFound = null $ NE.filter (\PublicKeyCredentialDescriptor{ id = pkcdId } -> pkid == pkcdId) xs
       when notFound $ Left CredentialNotAllowed
     Nothing -> pure ()
 

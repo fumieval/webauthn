@@ -30,7 +30,7 @@ module WebAuthn.Types
   , PublicKeyCredential(..)
   , PublicKeyCredentialCreationOptions(..), defaultPublicKeyCredentialCreationOptions
   , PublicKeyCredentialDescriptor(..)
-  , PublicKeyCredentialRequestOptions(..)
+  , PublicKeyCredentialRequestOptions(..), defaultPublicKeyCredentialRequestOptions
   , PublicKeyCredentialRpEntity(..), originToRelyingParty, isRegistrableDomainSuffixOfOrIsEqualTo
   , PublicKeyCredentialParameters(..)
   , PublicKeyCredentialType(..)
@@ -49,6 +49,7 @@ import Data.Aeson as J
       (.:),
       (.:?),
       object,
+      genericParseJSON,
       (.=),
       withObject,
       withText,
@@ -120,15 +121,27 @@ instance ToJSON AttestationConveyancePreference where
 --
 -- extensions omitted as support is minimal:
 -- https://developer.mozilla.org/en-US/docs/Web/API/PublicKeyCredentialRequestOptions/extensions
-data PublicKeyCredentialRequestOptions = PublicKeyCredentialRequestOptions
-  { challenge :: Challenge
+data PublicKeyCredentialRequestOptions t = PublicKeyCredentialRequestOptions
+  { challenge :: Required t Challenge
   , timeout :: Maybe Word32
   , rpId :: Maybe Text
   , allowCredentials :: Maybe (NonEmpty PublicKeyCredentialDescriptor)
   , userVerification :: Maybe UserVerificationRequirement
-  } deriving stock (Eq, Show, Generic)
+  } deriving stock (Generic)
 
-instance ToJSON PublicKeyCredentialRequestOptions where
+deriving instance Eq (PublicKeyCredentialRequestOptions Complete)
+deriving instance Show (PublicKeyCredentialRequestOptions Complete)
+
+defaultPublicKeyCredentialRequestOptions :: PublicKeyCredentialRequestOptions Incomplete
+defaultPublicKeyCredentialRequestOptions = PublicKeyCredentialRequestOptions
+  { challenge = ()
+  , timeout = Nothing
+  , rpId = Nothing
+  , allowCredentials = Nothing
+  , userVerification = Nothing
+  }
+
+instance t ~ Complete => ToJSON (PublicKeyCredentialRequestOptions t) where
   toEncoding = J.genericToEncoding defaultOptions { omitNothingFields = True}
   toJSON = J.genericToJSON defaultOptions { omitNothingFields = True}
 
@@ -296,24 +309,43 @@ data VerificationFailure
 --
 -- Extensions are not implemented.
 data PublicKeyCredential response = PublicKeyCredential
-  { id :: Text
+  { id :: CredentialId
   , rawId :: Base64UrlByteString
   , response :: response
   , typ :: PublicKeyCredentialType
   } deriving stock (Show, Generic)
 
+instance FromJSON response => FromJSON (PublicKeyCredential response) where
+  parseJSON = withObject "PublicKeyCredential" $ \o ->
+    PublicKeyCredential
+      <$> o .: "id"
+      <*> o .: "rawId"
+      <*> o .: "response"
+      <*> o .: "type"
 
 -- | 5.2.1. Information About Public Key Credential (interface AuthenticatorAttestationResponse)
 data AuthenticatorAttestationResponse = AuthenticatorAttestationResponse
   { clientDataJSON :: ByteString
   , attestationObject :: ByteString
-  , transports :: [ByteString] -- TODO: should be a set?
+  -- , transports :: [AuthenticatorTransport] -- TODO: should be a set?
   --, authenticatorData - omitted, stored inside attestationObject
   --, publicKey 
   --, publicKeyAlgorithm 
   }
 
+instance FromJSON AuthenticatorAttestationResponse where
+  parseJSON = withObject "AuthenticatorAttestationResponse" $ \o ->
+    AuthenticatorAttestationResponse
+      <$> fmap unBase64UrlByteString (o .: "clientDataJSON")
+      <*> fmap unBase64UrlByteString (o .: "attestationObject")
+--      <*> o .: "transports"
+
 data PublicKeyCredentialType = PublicKey deriving (Eq, Show, Generic)
+
+instance FromJSON PublicKeyCredentialType where
+  parseJSON = J.withText "PublicKeyCredentialType" $ \case
+    "public-key" -> pure PublicKey
+    x -> fail $ "PublicKeyCredentialType: unsuppored type: " <> show x
 
 instance ToJSON PublicKeyCredentialType where
   toJSON PublicKey = String "public-key"
@@ -323,6 +355,9 @@ data AuthenticatorTransport = USB -- usb
     | BLE -- ble
     | Internal -- internal
   deriving (Eq, Show, Generic)
+
+instance FromJSON AuthenticatorTransport where
+  parseJSON = genericParseJSON defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
 
 instance ToJSON AuthenticatorTransport where
   toEncoding = genericToEncoding defaultOptions { sumEncoding = UntaggedValue, constructorTagModifier = fmap toLower }
@@ -385,7 +420,7 @@ instance FromJSON AuthenticatorAssertionResponse where
       <$> fmap unBase64UrlByteString (o .: "clientDataJSON")
       <*> fmap unBase64UrlByteString (o .: "authenticatorData")
       <*> fmap unBase64UrlByteString (o .: "signature")
-      <*> fmap (fmap unBase64UrlByteString) (o .: "userHandler")
+      <*> fmap (fmap unBase64UrlByteString) (o .:? "userHandler")
 
 -- | 5.3. Parameters for Credential Generation (dictionary PublicKeyCredentialParameters)
 data PublicKeyCredentialParameters = PublicKeyCredentialParameters
