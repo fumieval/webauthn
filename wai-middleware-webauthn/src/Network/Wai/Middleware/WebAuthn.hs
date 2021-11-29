@@ -170,7 +170,7 @@ mkMiddleware Config{..} = do
     x : xs | x == endpoint -> case xs of
       ["lib.js"] -> sendResp $ responseFile status200 headers libJSPath Nothing
       ["challenge"] -> do
-        challenge <- generateChallenge 16
+        challenge <- newChallengeDef
         sendResp $ responseJSON challenge
       ["lookup", name] -> findCredentials handler (Identifier name)
         >>= sendResp . responseJSON

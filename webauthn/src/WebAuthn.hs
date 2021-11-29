@@ -24,7 +24,8 @@ module WebAuthn (
   , User(..)
   -- Challenge
   , Challenge(..)
-  , generateChallenge
+  , newChallengeDef
+  , newChallenge
   , WebAuthnType(..)
   , CollectedClientData(..)
   , AuthenticatorData(..)
@@ -59,7 +60,6 @@ import Control.Monad (when, unless)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Except (runExceptT, throwE, except)
 import qualified Crypto.Hash as H
-import Crypto.Random
 import Data.Aeson as AE
 import Data.Bifunctor (first)
 import Data.ByteArray qualified as BA
@@ -76,16 +76,13 @@ import WebAuthn.Assertion as Assertion
 import WebAuthn.AuthenticatorData
 import WebAuthn.Base
 import WebAuthn.Signature
+import WebAuthn.Common
 import WebAuthn.Attestation as Attestation
 import WebAuthn.Attestation.Statement.AndroidSafetyNet qualified as AndroidSafetyNet
 import WebAuthn.Attestation.Statement.FIDOU2F qualified as FIDOU2F
 import WebAuthn.Attestation.Statement.Packed qualified as Packed
 import WebAuthn.Attestation.Statement.TPM qualified as TPM
 import WebAuthn.Types
-
--- | Generate a cryptographic challenge (13.1).
-generateChallenge :: Int -> IO Challenge
-generateChallenge len = Challenge <$> getRandomBytes len
 
 data VerifyAttestationArgs t = VerifyAttestationArgs
   { certificateStore :: X509.CertificateStore
