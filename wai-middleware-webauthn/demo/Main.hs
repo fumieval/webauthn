@@ -2,17 +2,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import WebAuthn.Types (Origin(..))
-import qualified Network.Wai.Middleware.WebAuthn.Token as WebAuthn
+import Data.Aeson qualified as J
+import Data.Yaml qualified as Yaml
+import Network.HTTP.Types
+import Network.Wai
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.Warp.Internal
 import Network.Wai.Handler.WarpTLS
-import Network.Wai
-import Network.HTTP.Types
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Yaml as Yaml
-import qualified Data.Aeson as J
+import Network.Wai.Middleware.WebAuthn.Token qualified as WebAuthn
 import Paths_demo
 import System.Environment
 
