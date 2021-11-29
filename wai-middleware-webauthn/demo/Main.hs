@@ -3,7 +3,7 @@
 module Main where
 
 import WebAuthn.Types (Origin(..))
-import qualified Network.Wai.Middleware.WebAuthn as WebAuthn
+import qualified Network.Wai.Middleware.WebAuthn.Token as WebAuthn
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.Warp.Internal
 import Network.Wai.Handler.WarpTLS

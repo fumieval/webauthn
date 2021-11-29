@@ -39,8 +39,12 @@ library
     , x509-store
     , yaml
 
-  exposed-modules:  Network.Wai.Middleware.WebAuthn
+  exposed-modules:
+    Network.Wai.Middleware.WebAuthn
+    Network.Wai.Middleware.WebAuthn.Token
+    Network.Wai.Middleware.WebAuthn.Utils
   ghc-options:      -Wall
   hs-source-dirs:   src
   default-language: Haskell2010
+  default-extensions: OverloadedStrings
   other-modules:    Paths_wai_middleware_webauthn
