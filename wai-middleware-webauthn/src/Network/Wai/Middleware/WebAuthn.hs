@@ -47,6 +47,8 @@ newtype Identifier = Identifier { unIdentifier :: Text }
 
 data Handler = Handler
   { findCredentials :: Identifier -> IO [AttestedCredentialData]
+  -- ^ We don't expect users to have user-friendly interface to enumerate credential IDs at the moment; provide a function to look up a public key from a user name.
+  -- cf. https://developers.yubico.com/WebAuthn/WebAuthn_Developer_Guide/Resident_Keys.html
   , findPublicKey :: CredentialId -> IO (Maybe (Identifier, CredentialPublicKey))
   , onAttestation :: User -> AttestedCredentialData -> AttestationStatement -> SignCount -> IO Response
   , onAssertion :: Identifier -> Maybe SignCount -> IO Response
@@ -119,8 +121,9 @@ jsonBody sendResp req = do
 -- On verified assertion, it returns a token as plain text and stores it in memory.
 volatileTokenAuthorisation :: (String -> IO ()) -- ^ logger
   -> Double -- timeout in seconds
-  -> IO (Handler -> Handler, Middleware)
-volatileTokenAuthorisation logger timeout = do
+  -> Config Handler
+  -> IO Middleware
+volatileTokenAuthorisation logger timeout config = do
   vTokens <- newIORef M.empty
 
   -- expire tokens
@@ -149,7 +152,9 @@ volatileTokenAuthorisation logger timeout = do
               { requestHeaders = ("Authorization", T.encodeUtf8 name) : xs ++ ys }) sendResp
         _ -> app req sendResp
 
-  pure (\h -> h { onAttestation, onAssertion }, mid)
+  auth <- mkMiddleware $ (\h -> h { onAttestation, onAssertion }) <$> config
+
+  pure (mid . auth)
 
 -- | Create a web authentication middleware.
 --

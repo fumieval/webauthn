@@ -21,12 +21,8 @@ main = do
   config <- getDataFileName "config.yaml" >>= Yaml.decodeFileThrow
 
   -- Initialise the authorisation logic. Creates a function that updates the handler
-  (setHandler, authorisation) <- WebAuthn.volatileTokenAuthorisation putStrLn 60
-
-  authentication <- WebAuthn.mkMiddleware $ setHandler . WebAuthn.staticKeys <$> config
-
-  -- Combine the authentication middleware and the authorization middleware
-  let middleware = authentication . authorisation
+  middleware <- WebAuthn.volatileTokenAuthorisation putStrLn 60
+    $ WebAuthn.staticKeys <$> config
 
   path <- getDataFileName "index.html"
   -- dead simple application which returns the user name
