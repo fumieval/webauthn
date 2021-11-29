@@ -20,23 +20,33 @@ main :: IO ()
 main = do
   config <- getDataFileName "config.yaml" >>= Yaml.decodeFileThrow
 
-  -- Initialise the authorisation logic. Creates a function that updates the handler
-  middleware <- WebAuthn.volatileTokenAuthorisation putStrLn 60
-    $ WebAuthn.staticKeys <$> config
+  middleware <- WebAuthn.volatileTokenAuthorisation
+    putStrLn -- logger function
+    60 -- lifetime of tokens in seconds
+    $ WebAuthn.staticKeys -- convert a list of public keys to a Handler
+      <$> config
 
+  application <- mkApplication
+
+  startServer $ middleware application
+
+-- | dead simple application which returns the user name
+mkApplication :: IO Application
+mkApplication = do
   path <- getDataFileName "index.html"
-  -- dead simple application which returns the user name
-  let application req sendResp = case pathInfo req of
-        [] -> sendResp $ responseFile status200 [] path Nothing
-        ["api"] -> case WebAuthn.requestIdentifier req of
-          Nothing -> sendResp $ responseLBS status401 [] "Authorisation required"
-          Just name -> sendResp $ responseLBS status200 [] $ J.encode name
-        _ -> sendResp $ responseLBS status404 [] "Not found"
+  pure $ \req sendResp -> case pathInfo req of
+    [] -> sendResp $ responseFile status200 [] path Nothing
+    -- Obtain the user name using requestIdentifier
+    ["api"] -> case WebAuthn.requestIdentifier req of
+      Nothing -> sendResp $ responseLBS status401 [] "Authorisation required"
+      Just name -> sendResp $ responseLBS status200 [] $ J.encode name
+    _ -> sendResp $ responseLBS status404 [] "Not found"
 
+startServer :: Application -> IO ()
+startServer app = do
   pathCert <- getDataFileName "certificate.pem"
   pathKey <- getDataFileName "key.pem"
   port <- maybe 8080 read <$> lookupEnv "PORT"
   putStrLn $ "Listening on port " <> show port
   let cfg = setPort port defaultSettings
-  runTLS (tlsSettings pathCert pathKey) cfg { settingsHTTP2Enabled = False }
-    $ middleware application
+  runTLS (tlsSettings pathCert pathKey) cfg { settingsHTTP2Enabled = False } app

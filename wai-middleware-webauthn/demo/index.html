@@ -65,21 +65,31 @@
     <button id="run">GET /api</button>
   <script>
     const auth = WebAuthnProxy("localhost", "webauthn");
-    var idInput = document.getElementById('webauthn-id');
-    var currentToken = null;
+    let idInput = document.getElementById('webauthn-id');
+    let currentToken = null;
+
+    // Attestation
     document.getElementById("webauthn-register").addEventListener("click"
       , function(e){
-      uid = [];
-      for (var a=[],i=0;i<64;i++){ uid.push(Math.random() * 256) }
-      let name = document.getElementById("webauthn-display-name").value;
-      let user = {
-          id: new Uint8Array(uid),
-          displayName: name,
-          name: name
-          };
-        auth.attest(user).then(resp => resp.json()).then(result => {
-          var div = document.createElement("section");
-          div.innerHTML = "Add the following pair to config.yaml and restart: <pre><code>"
+        // Generate a random user ID
+        // Is it a good idea to generate it client-side though?
+        let uid = [];
+        for (var a=[],i=0;i<64;i++){ uid.push(Math.random() * 256) }
+
+        // displayName can be arbitrary string
+        const name = document.getElementById("webauthn-display-name").value;
+
+        // PublicKeyCredentialUserEntity
+        const user = {
+            id: new Uint8Array(uid),
+            displayName: name,
+            };
+
+        auth.attest(user) //
+        .then(resp => resp.json()) // Response from onAttestation. In this case, AttestedCredentialData in JSON
+        .then(result => {
+          const div = document.createElement("section");
+          div.innerHTML = "Add the following block to config.yaml and restart: <pre><code>"
             + user.displayName + ":"
             + "\n- aaguid: '" + result.aaguid
             + "'\n  credentialId: " + result.credentialId
@@ -88,25 +98,33 @@
           document.getElementById("webauthn-result").appendChild(div);
         });
       });
+
+    // Assertion
     document.getElementById("webauthn-login").addEventListener("click"
+      // Fetch a list of credentials available for the specified user name
       , e => auth.lookup(idInput.value)
         .then(function(creds){
           if (creds.length == 0){
-            var div = document.createElement("section");
+            const div = document.createElement("section");
             div.innerText = "No credential found";
+            document.getElementById("webauthn-result").appendChild(div);
             return;
           }
+          // Pass the credential Id
           auth.assert(creds[0].credentialId)
-            .then(resp => resp.text())
+            .then(resp => resp.text()) // Response of onAssertion
             .then(function(token){
-              var div = document.createElement("section");
+              const div = document.createElement("section");
               div.innerText = "Your token: " + token;
               currentToken = token;
               document.getElementById("webauthn-result").appendChild(div);
             });})
       );
+
+    // application demo
     document.getElementById("run").addEventListener("click"
       , function(e){
+        // Pass the token in the Authorization header
         fetch("/api", { headers: { Authorization: currentToken }})
         .then(resp => resp.text().then(body => {
           var div = document.createElement("section");
